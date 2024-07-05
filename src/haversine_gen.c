@@ -18,6 +18,8 @@ typedef u8 bool;
 #define PI       3.14159265358979323846264338327950
 #define PI_DIV_2 1.57079632679489661923132169163975
 
+#include "../listings/listing_0065_haversine_formula.cpp"
+
 // NOTE: Random bullshit go!
 void
 Rand_Seed(u64 seed)
@@ -121,29 +123,59 @@ main(int argc, char** argv)
   }
 
   { /// Gen points
+    bool encountered_errors = false;
 
     Rand_Seed(seed);
 
-    printf("{\"pairs\":[\n");
+    char json_filename[sizeof("data__flex.json") + 19];
+    char answer_filename[sizeof("data__haveranswer.f64") + 19];
 
-    if (should_cluster)
+    snprintf(json_filename, sizeof(json_filename), "data_%llu_flex.json", num_pairs);
+    snprintf(answer_filename, sizeof(answer_filename), "data_%llu_haveranswer.f64", num_pairs);
+
+    FILE* json_output;
+    FILE* answer_output;
+    if (fopen_s(&json_output, json_filename, "wb") != 0 || fopen_s(&answer_output, answer_filename, "wb") != 0)
     {
-      fprintf(stderr, "NOT IMPLEMENTED\n");
+      fprintf(stderr, "Failed to open output files\n");
+      encountered_errors = true;
     }
     else
     {
-      for (umm i = 0; i < num_pairs; ++i)
+      fprintf(json_output, "{\"pairs\":[\n");
+
+      f64 acc_answer = 0;
+
+      if (should_cluster)
       {
-        f64 x0 = Rand_PM1() * 180;
-        f64 x1 = Rand_PM1() * 180;
-        f64 y0 = Rand_PM1() * 90;
-        f64 y1 = Rand_PM1() * 90;
-
-        printf("    {\"x0\":%.6f, \"y0\":%.6f, \"x1\":%.6f, \"y1\":%.6f}%s\n", x0, y0, x1, y1, (i < num_pairs-1 ? "," : ""));
+        fprintf(stderr, "NOT IMPLEMENTED\n");
+        encountered_errors = true;
       }
-    }
+      else
+      {
+        for (umm i = 0; i < num_pairs; ++i)
+        {
+          f64 x0 = Rand_PM1() * 180;
+          f64 x1 = Rand_PM1() * 180;
+          f64 y0 = Rand_PM1() * 90;
+          f64 y1 = Rand_PM1() * 90;
 
-    printf("]}\n");
+          f64 answer = ReferenceHaversine(x0, y0, x1, y1, 6372.8);
+          acc_answer += answer;
+
+          fprintf(json_output, "    {\"x0\":%.16f, \"y0\":%.16f, \"x1\":%.16f, \"y1\":%.16f}%s\n", x0, y0, x1, y1, (i < num_pairs-1 ? "," : ""));
+          fwrite(&answer, sizeof(f64), 1, answer_output);
+        }
+      }
+
+      fprintf(json_output, "]}\n");
+
+      f64 mean_answer = acc_answer/num_pairs;
+      fwrite(&mean_answer, sizeof(f64), 1, answer_output);
+
+      fclose(json_output);
+      fclose(answer_output);
+    }
   }
 
   return 0;
