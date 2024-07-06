@@ -294,6 +294,9 @@ main(int argc, char** argv)
   }
   else
   {
+    f64 acc_mean  = 0;
+    umm num_pairs = 0;
+
     FILE* json_input;
     if (fopen_s(&json_input, argv[1], "rb") != 0) fprintf(stderr, "Failed to open input file\n");
     else
@@ -407,6 +410,10 @@ main(int argc, char** argv)
             }
 
             // TODO: Compute
+            f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
+
+            acc_mean += answer;
+            ++num_pairs;
 
             if (EatToken(&lexer, Token_Comma)) continue;
             else                               break;
@@ -422,6 +429,10 @@ main(int argc, char** argv)
         if (encountered_errors)
         {
           fprintf(stderr, "Input file is ill-formed\n");
+        }
+        else
+        {
+          printf("Mean: %.16f\n", acc_mean/num_pairs);
         }
       }
 
