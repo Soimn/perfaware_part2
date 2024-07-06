@@ -12,13 +12,20 @@ if "%Platform%" neq "x64" (
 	goto end
 )
 
-set "common_compile_options= /nologo /W3"
+set "common_compile_options= /nologo /W3 /wd4116"
 set "common_link_options= /incremental:no /opt:ref /subsystem:console"
 
-set "compile_options=%common_compile_options% /Od /Zo /Z7 /RTC1 /MTd"
+set "debug_compile_options=%common_compile_options% /Od /Zo /Z7 /RTC1 /MTd"
+set "release_compile_options=%common_compile_options% /O2"
 set "link_options=%common_link_options%"
 
-if "%1" neq "" goto invalid_arguments
+if "%1"=="debug" (
+  set "compile_options=%debug_compile_options%"
+) else if "%1"=="release" (
+  set "compile_options=%release_compile_options%"
+) else (
+  goto invalid_arguments
+)
 
 cl %compile_options% ..\listings\listing_0066_haversine_generator_main.cpp /link %link_options% /pdb:haversine_gen_ref.pdb /out:haversine_gen_ref.exe
 cl %compile_options% ..\listings\listing_0067_simple_haversine_main.cpp /link %link_options% /pdb:haversine_ref.pdb /out:haversine_ref.exe
@@ -29,7 +36,7 @@ cl %compile_options% ..\src\haversine_proc.c /link %link_options% /pdb:haversine
 goto end
 
 :invalid_arguments
-echo Invalid arguments^. Usage: build
+echo Invalid arguments^. Usage: build ^[debug^/release^]
 goto end
 
 :end

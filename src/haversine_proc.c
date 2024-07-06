@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 typedef unsigned __int8 u8;
 typedef unsigned __int64 u64;
@@ -172,7 +174,8 @@ NextToken(Lexer* lexer)
           number      = 0;
         }
 
-        if (!is_negative || Char_IsDigit(*cursor))
+        if ((!is_negative || Char_IsDigit(*cursor)) &&
+            (is_negative ? (cursor[0] != '0' || !Char_IsDigit(cursor[1])) : (c != '0' || !Char_IsDigit(cursor[0]))))
         {
           bool encountered_errors = false;
 
@@ -285,6 +288,36 @@ EatTokens_(Lexer* lexer, umm token_count, Token_Kind* tokens)
 
 #define EatTokens(lexer, ...) EatTokens_((lexer), sizeof((Token_Kind[]){__VA_ARGS__})/sizeof(Token_Kind), (Token_Kind[]){__VA_ARGS__})
 
+static bool
+ReadEntireFile(char* filename, void** contents, u64* size)
+{
+  bool succeeded = false;
+  
+  FILE* file;
+  struct __stat64 file_stat;
+
+  if (fopen_s(&file, filename, "rb") == 0)
+  {
+    if (_stat64(filename, &file_stat) == 0)
+    {
+      u8* memory = malloc(file_stat.st_size + 1);
+
+      if (memory != 0 && fread(memory, 1, file_stat.st_size, file) == file_stat.st_size)
+      {
+        memory[file_stat.st_size] = 0;
+
+        *contents = memory;
+        *size     = file_stat.st_size;
+        succeeded = true;
+      }
+    }
+
+    fclose(file);
+  }
+
+  return succeeded;
+}
+
 int
 main(int argc, char** argv)
 {
@@ -294,149 +327,149 @@ main(int argc, char** argv)
   }
   else
   {
-    f64 acc_mean  = 0;
+    f64 acc       = 0;
     umm num_pairs = 0;
 
-    FILE* json_input;
-    if (fopen_s(&json_input, argv[1], "rb") != 0) fprintf(stderr, "Failed to open input file\n");
+    u8* input                 = 0;
+    u64 input_size            = 0;
+    f64* expected_answers     = 0;
+    u64 expected_answers_size = 0;
+
+    if      (!ReadEntireFile(argv[1], &input, &input_size))                                   fprintf(stderr, "Failed to read input file\n");
+    else if (argc > 2 && !ReadEntireFile(argv[2], &expected_answers, &expected_answers_size)) fprintf(stderr, "Failed to read answer file\n");
     else
     {
-      fseek(json_input, 0, SEEK_END);
-      umm json_input_size = ftell(json_input);
-      rewind(json_input);
+      umm expected_pair_count = expected_answers_size/sizeof(f64) - 1;
 
-      u8* input = malloc(json_input_size + 1);
+      bool encountered_errors = false;
 
-      if      (input == 0)                                                      fprintf(stderr, "Failed to allocate memory for input\n");
-      else if (fread(input, 1, json_input_size, json_input) != json_input_size) fprintf(stderr, "Failed to read input file\n");
+      Lexer lexer = { .cursor = input };
+      NextToken(&lexer);
+
+      if (!EatTokens(&lexer, Token_OpenBrace, Token_Pairs, Token_Colon, Token_OpenBracket))
+      {
+        //// ERROR: Missing {"pairs":[
+        encountered_errors = true;
+      }
       else
       {
-        input[json_input_size] = 0;
-
-        bool encountered_errors = false;
-
-        Lexer lexer = { .cursor = input };
-        NextToken(&lexer);
-
-        if (!EatTokens(&lexer, Token_OpenBrace, Token_Pairs, Token_Colon, Token_OpenBracket))
+        for (;;)
         {
-          //// ERROR: Missing {"pairs":[
-          encountered_errors = true;
-        }
-        else
-        {
-          for (;;)
+          if (!EatToken(&lexer, Token_OpenBrace))
           {
-            if (!EatToken(&lexer, Token_OpenBrace))
+            encountered_errors = true;
+            break;
+          }
+
+          #define NIL_COORD 512
+          f64 coords[4] = { NIL_COORD, NIL_COORD, NIL_COORD, NIL_COORD };
+          f64 bounds[4] = { 180, 180, 90, 90};
+
+          for (umm found_coords = 0;;)
+          {
+            Token token = GetToken(&lexer);
+
+            if (!(token.kind >= Token__FirstCoord && token.kind < Token__PastLastCoord))
             {
+              //// ERROR: name of value not matching any of the coord names
               encountered_errors = true;
               break;
             }
-
-            #define NIL_COORD 512
-            f64 coords[4] = { NIL_COORD, NIL_COORD, NIL_COORD, NIL_COORD };
-            f64 bounds[4] = { 180, 180, 90, 90};
-
-            for (umm found_coords = 0;;)
+            else if (coords[token.kind-Token__FirstCoord] != NIL_COORD)
             {
-              Token token = GetToken(&lexer);
+              //// ERROR: Two elements with same name
+              encountered_errors = true;
+              break;
+            }
+            else
+            {
+              umm coord_idx = token.kind - Token__FirstCoord;
+              
+              NextToken(&lexer);
 
-              if (!(token.kind >= Token__FirstCoord && token.kind < Token__PastLastCoord))
+              if (!EatToken(&lexer, Token_Colon) || GetToken(&lexer).kind != Token_Number)
               {
-                //// ERROR: name of value not matching any of the coord names
-                encountered_errors = true;
-                break;
-              }
-              else if (coords[token.kind-Token__FirstCoord] != NIL_COORD)
-              {
-                //// ERROR: Two elements with same name
+                //// ERROR: Missing :value
                 encountered_errors = true;
                 break;
               }
               else
               {
-                umm coord_idx = token.kind - Token__FirstCoord;
-                
-                NextToken(&lexer);
+                Token token = GetToken(&lexer);
 
-                if (!EatToken(&lexer, Token_Colon) || GetToken(&lexer).kind != Token_Number)
+                f64 number     = token.number;
+                f64 abs_number = (number < 0 ? -number : number);
+
+                // TODO: Float imprecision
+                if (abs_number < -bounds[coord_idx] || abs_number > bounds[coord_idx])
                 {
-                  //// ERROR: Missing :value
+                  //// ERROR: Coord is out of bounds
                   encountered_errors = true;
                   break;
                 }
                 else
                 {
-                  Token token = GetToken(&lexer);
-
-                  f64 number     = token.number;
-                  f64 abs_number = (number < 0 ? -number : number);
-
-                  // TODO: Float imprecision
-                  if (abs_number < -bounds[coord_idx] || abs_number > bounds[coord_idx])
-                  {
-                    //// ERROR: Coord is out of bounds
-                    encountered_errors = true;
-                    break;
-                  }
-                  else
-                  {
-                    coords[coord_idx] = number;
-                    ++found_coords;
-                    NextToken(&lexer);
-                  }
+                  coords[coord_idx] = number;
+                  ++found_coords;
+                  NextToken(&lexer);
                 }
               }
-
-              if (EatToken(&lexer, Token_Comma)) continue;
-              else
-              {
-                if (found_coords != ARRAY_SIZE(coords))
-                {
-                  //// ERROR: Not all coords present
-                  encountered_errors = true;
-                }
-
-                break;
-              }
             }
-
-            if (encountered_errors) break;
-
-            if (!EatToken(&lexer, Token_CloseBrace))
-            {
-              encountered_errors = true;
-              break;
-            }
-
-            // TODO: Compute
-            f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
-
-            acc_mean += answer;
-            ++num_pairs;
 
             if (EatToken(&lexer, Token_Comma)) continue;
-            else                               break;
+            else
+            {
+              if (found_coords != ARRAY_SIZE(coords))
+              {
+                //// ERROR: Not all coords present
+                encountered_errors = true;
+              }
+
+              break;
+            }
           }
 
-          if (!encountered_errors && !EatTokens(&lexer, Token_CloseBracket, Token_CloseBrace, Token_EOF))
+          if (encountered_errors) break;
+
+          if (!EatToken(&lexer, Token_CloseBrace))
           {
-            //// ERROR: Missing ]} or extra elements in outermost object
             encountered_errors = true;
+            break;
           }
+
+          f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
+
+          acc += answer;
+          ++num_pairs;
+
+          if (EatToken(&lexer, Token_Comma)) continue;
+          else                               break;
         }
 
-        if (encountered_errors)
+        if (!encountered_errors && !EatTokens(&lexer, Token_CloseBracket, Token_CloseBrace, Token_EOF))
         {
-          fprintf(stderr, "Input file is ill-formed\n");
-        }
-        else
-        {
-          printf("Mean: %.16f\n", acc_mean/num_pairs);
+          //// ERROR: Missing ]} or extra elements in outermost object
+          encountered_errors = true;
         }
       }
 
-      fclose(json_input);
+      if (encountered_errors)                                             fprintf(stderr, "Input file is ill-formed\n");
+      else if (expected_answers != 0 && num_pairs != expected_pair_count) fprintf(stderr, "Mismatching pair counts in json and answer file\n");
+      else
+      {
+        f64 sum = acc/num_pairs;
+
+        printf("Input size: %llu\n", input_size);
+        printf("Pair count: %llu\n", num_pairs);
+        printf("Haversine sum: %.16f\n", sum);
+
+        if (expected_answers != 0)
+        {
+          printf("\nValidation:\n");
+          printf("Expected answer: %.16f\n", expected_answers[expected_pair_count]);
+          printf("Difference: %.16f\n", sum - expected_answers[expected_pair_count]);
+        }
+      }
     }
   }
 
