@@ -166,11 +166,10 @@ NextToken(Lexer* lexer)
         bool is_negative = false;
         f64 number       = c&0xF;
 
-        if (c == '_')
+        if (c == '-')
         {
           is_negative = true;
           number      = 0;
-          ++cursor;
         }
 
         if (!is_negative || Char_IsDigit(*cursor))
@@ -185,8 +184,6 @@ NextToken(Lexer* lexer)
 
             ++cursor;
           }
-
-          if (is_negative) number = -number;
 
           if (!encountered_errors && *cursor == '.')
           {
@@ -234,6 +231,8 @@ NextToken(Lexer* lexer)
               for (umm i = 0; i < exponent; ++i) number *= multiplier;
             }
           }
+
+          if (is_negative) number = -number;
 
           if (encountered_errors) token.kind = Token_Invalid;
           else
@@ -296,7 +295,7 @@ main(int argc, char** argv)
   else
   {
     FILE* json_input;
-    if (!fopen_s(&json_input, argv[1], "rb")) fprintf(stderr, "Failed to open input file\n");
+    if (fopen_s(&json_input, argv[1], "rb") != 0) fprintf(stderr, "Failed to open input file\n");
     else
     {
       fseek(json_input, 0, SEEK_END);
@@ -309,7 +308,9 @@ main(int argc, char** argv)
       else if (fread(input, 1, json_input_size, json_input) != json_input_size) fprintf(stderr, "Failed to read input file\n");
       else
       {
-        bool encountered_errors = true;
+        input[json_input_size] = 0;
+
+        bool encountered_errors = false;
 
         Lexer lexer = { .cursor = input };
         NextToken(&lexer);
@@ -406,7 +407,6 @@ main(int argc, char** argv)
             }
 
             // TODO: Compute
-            printf("x0: %f, x1: %f, y0: %f, y1: %f\n", coords[0], coords[1], coords[2], coords[3]);
 
             if (EatToken(&lexer, Token_Comma)) continue;
             else                               break;
