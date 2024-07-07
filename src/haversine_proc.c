@@ -1,44 +1,6 @@
-#include <stdio.h>
-#include <math.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-
-typedef unsigned __int8 u8;
-typedef unsigned __int64 u64;
-
-typedef u64 umm;
-
-typedef double f64;
-
-typedef u8 bool;
-#define true 1
-#define false 0
-
-#define PI       3.14159265358979323846264338327950
-#define PI_DIV_2 1.57079632679489661923132169163975
+#include "common.h"
 
 #include "../listings/listing_0065_haversine_formula.cpp"
-
-#define ARRAY_SIZE(A) (sizeof(A)/sizeof(0[A]))
-
-bool
-Char_IsWhitespace(u8 c)
-{
-  return (c == ' ' || c == '\n' || c == '\r' || c == '\t');
-}
-
-bool
-Char_IsDigit(u8 c)
-{
-  return ((u8)(c-0x30) < (u8)10);
-}
-
-bool
-Char_IsHexAlphaDigit(u8 c)
-{
-  return ((u8)((c&0xDF) - 'A') <= (u8)('F' - 'A'));
-}
 
 typedef enum Token_Kind
 {
@@ -288,39 +250,17 @@ EatTokens_(Lexer* lexer, umm token_count, Token_Kind* tokens)
 
 #define EatTokens(lexer, ...) EatTokens_((lexer), sizeof((Token_Kind[]){__VA_ARGS__})/sizeof(Token_Kind), (Token_Kind[]){__VA_ARGS__})
 
-static bool
-ReadEntireFile(char* filename, void** contents, u64* size)
-{
-  bool succeeded = false;
-  
-  FILE* file;
-  struct __stat64 file_stat;
-
-  if (fopen_s(&file, filename, "rb") == 0)
-  {
-    if (_stat64(filename, &file_stat) == 0)
-    {
-      u8* memory = malloc(file_stat.st_size + 1);
-
-      if (memory != 0 && fread(memory, 1, file_stat.st_size, file) == file_stat.st_size)
-      {
-        memory[file_stat.st_size] = 0;
-
-        *contents = memory;
-        *size     = file_stat.st_size;
-        succeeded = true;
-      }
-    }
-
-    fclose(file);
-  }
-
-  return succeeded;
-}
-
 int
 main(int argc, char** argv)
 {
+  u64 start_tick = __rdtsc();
+
+  struct {
+    u64 startup_ticks;
+    u64 acc_parse_ticks;
+    u64 acc_compute_ticks;
+  } timing_info = {0};
+
   if (argc < 2 || argc > 3)
   {
     fprintf(stderr, "Usage: haversine_proc [json file]\n       haversine_proc [json file] [answer file]\n");
@@ -353,8 +293,12 @@ main(int argc, char** argv)
       }
       else
       {
+        timing_info.startup_ticks = __rdtsc() - start_tick;
+
         for (;;)
         {
+          u64 start_parse_tick = __rdtsc();
+
           if (!EatToken(&lexer, Token_OpenBrace))
           {
             encountered_errors = true;
@@ -437,9 +381,14 @@ main(int argc, char** argv)
             break;
           }
 
-          f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
+          timing_info.acc_parse_ticks += __rdtsc() - start_parse_tick;
 
+          u64 start_compute_tick = __rdtsc();
+          f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
           acc += answer;
+
+          timing_info.acc_compute_ticks += __rdtsc() - start_compute_tick;
+
           ++num_pairs;
 
           if (EatToken(&lexer, Token_Comma)) continue;
@@ -453,11 +402,13 @@ main(int argc, char** argv)
         }
       }
 
-      if (encountered_errors)                                             fprintf(stderr, "Input file is ill-formed\n");
+      if      (encountered_errors)                                        fprintf(stderr, "Input file is ill-formed\n");
       else if (expected_answers != 0 && num_pairs != expected_pair_count) fprintf(stderr, "Mismatching pair counts in json and answer file\n");
       else
       {
         f64 sum = acc/num_pairs;
+
+        u64 end_tick = __rdtsc();
 
         printf("Input size: %llu\n", input_size);
         printf("Pair count: %llu\n", num_pairs);
@@ -469,6 +420,16 @@ main(int argc, char** argv)
           printf("Expected answer: %.16f\n", expected_answers[expected_pair_count]);
           printf("Difference: %.16f\n", sum - expected_answers[expected_pair_count]);
         }
+
+        u64 rdtsc_freq = EstimateRDTSCFrequency(100);
+
+        u64 total_ticks = end_tick - start_tick;
+
+        printf("\nProfiling:\n");
+        printf("Total time: %.4f ms (estimated CPU freq %llu)\n", 1000.0 * (f64)total_ticks/rdtsc_freq, rdtsc_freq);
+        printf("Startup: %llu (%.2f%%)\n", timing_info.startup_ticks, 100.0 * (f64)timing_info.startup_ticks/total_ticks);
+        printf("Acc parse: %llu (%.2f%%)\n", timing_info.acc_parse_ticks, 100.0 * (f64)timing_info.acc_parse_ticks/total_ticks);
+        printf("Acc compute: %llu (%.2f%%)\n", timing_info.acc_compute_ticks, 100.0 * (f64)timing_info.acc_compute_ticks/total_ticks);
       }
     }
   }

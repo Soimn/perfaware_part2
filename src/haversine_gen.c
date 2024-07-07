@@ -1,22 +1,7 @@
-#include <stdio.h>
-#include <math.h>
+#include "common.h"
 
 #include "splitmix64.h"
 #include "xoroshiro256plus.h"
-
-typedef unsigned __int8 u8;
-typedef unsigned __int64 u64;
-
-typedef u64 umm;
-
-typedef double f64;
-
-typedef u8 bool;
-#define true 1
-#define false 0
-
-#define PI       3.14159265358979323846264338327950
-#define PI_DIV_2 1.57079632679489661923132169163975
 
 #include "../listings/listing_0065_haversine_formula.cpp"
 
