@@ -253,14 +253,10 @@ EatTokens_(Lexer* lexer, umm token_count, Token_Kind* tokens)
 int
 main(int argc, char** argv)
 {
-  u64 start_tick = __rdtsc();
+  Profiling_Begin();
 
-  struct {
-    u64 startup_ticks;
-    u64 acc_parse_ticks;
-    u64 acc_compute_ticks;
-  } timing_info = {0};
-
+  u64 timed_section_start_id = __COUNTER__;
+  TimedSection_Begin(timed_section_start_id, "Startup");
   if (argc < 2 || argc > 3)
   {
     fprintf(stderr, "Usage: haversine_proc [json file]\n       haversine_proc [json file] [answer file]\n");
@@ -293,101 +289,100 @@ main(int argc, char** argv)
       }
       else
       {
-        timing_info.startup_ticks = __rdtsc() - start_tick;
+        TimedSection_End(timed_section_start_id);
 
         for (;;)
         {
-          u64 start_parse_tick = __rdtsc();
-
-          if (!EatToken(&lexer, Token_OpenBrace))
-          {
-            encountered_errors = true;
-            break;
-          }
-
           #define NIL_COORD 512
           f64 coords[4] = { NIL_COORD, NIL_COORD, NIL_COORD, NIL_COORD };
           f64 bounds[4] = { 180, 180, 90, 90};
 
-          for (umm found_coords = 0;;)
+          TIMED_BLOCK("Parse")
           {
-            Token token = GetToken(&lexer);
-
-            if (!(token.kind >= Token__FirstCoord && token.kind < Token__PastLastCoord))
+            if (!EatToken(&lexer, Token_OpenBrace))
             {
-              //// ERROR: name of value not matching any of the coord names
               encountered_errors = true;
               break;
             }
-            else if (coords[token.kind-Token__FirstCoord] != NIL_COORD)
-            {
-              //// ERROR: Two elements with same name
-              encountered_errors = true;
-              break;
-            }
-            else
-            {
-              umm coord_idx = token.kind - Token__FirstCoord;
-              
-              NextToken(&lexer);
 
-              if (!EatToken(&lexer, Token_Colon) || GetToken(&lexer).kind != Token_Number)
+            for (umm found_coords = 0;;)
+            {
+              Token token = GetToken(&lexer);
+
+              if (!(token.kind >= Token__FirstCoord && token.kind < Token__PastLastCoord))
               {
-                //// ERROR: Missing :value
+                //// ERROR: name of value not matching any of the coord names
+                encountered_errors = true;
+                break;
+              }
+              else if (coords[token.kind-Token__FirstCoord] != NIL_COORD)
+              {
+                //// ERROR: Two elements with same name
                 encountered_errors = true;
                 break;
               }
               else
               {
-                Token token = GetToken(&lexer);
+                umm coord_idx = token.kind - Token__FirstCoord;
+                
+                NextToken(&lexer);
 
-                f64 number     = token.number;
-                f64 abs_number = (number < 0 ? -number : number);
-
-                // TODO: Float imprecision
-                if (abs_number < -bounds[coord_idx] || abs_number > bounds[coord_idx])
+                if (!EatToken(&lexer, Token_Colon) || GetToken(&lexer).kind != Token_Number)
                 {
-                  //// ERROR: Coord is out of bounds
+                  //// ERROR: Missing :value
                   encountered_errors = true;
                   break;
                 }
                 else
                 {
-                  coords[coord_idx] = number;
-                  ++found_coords;
-                  NextToken(&lexer);
+                  Token token = GetToken(&lexer);
+
+                  f64 number     = token.number;
+                  f64 abs_number = (number < 0 ? -number : number);
+
+                  // TODO: Float imprecision
+                  if (abs_number < -bounds[coord_idx] || abs_number > bounds[coord_idx])
+                  {
+                    //// ERROR: Coord is out of bounds
+                    encountered_errors = true;
+                    break;
+                  }
+                  else
+                  {
+                    coords[coord_idx] = number;
+                    ++found_coords;
+                    NextToken(&lexer);
+                  }
                 }
+              }
+
+              if (EatToken(&lexer, Token_Comma)) continue;
+              else
+              {
+                if (found_coords != ARRAY_SIZE(coords))
+                {
+                  //// ERROR: Not all coords present
+                  encountered_errors = true;
+                }
+
+                break;
               }
             }
 
-            if (EatToken(&lexer, Token_Comma)) continue;
-            else
-            {
-              if (found_coords != ARRAY_SIZE(coords))
-              {
-                //// ERROR: Not all coords present
-                encountered_errors = true;
-              }
+            if (encountered_errors) break;
 
+            if (!EatToken(&lexer, Token_CloseBrace))
+            {
+              encountered_errors = true;
               break;
             }
           }
 
-          if (encountered_errors) break;
-
-          if (!EatToken(&lexer, Token_CloseBrace))
+          TIMED_BLOCK("Compute")
           {
-            encountered_errors = true;
-            break;
+            f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
+            acc += answer;
           }
-
-          timing_info.acc_parse_ticks += __rdtsc() - start_parse_tick;
-
-          u64 start_compute_tick = __rdtsc();
-          f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
-          acc += answer;
-
-          timing_info.acc_compute_ticks += __rdtsc() - start_compute_tick;
 
           ++num_pairs;
 
@@ -408,7 +403,7 @@ main(int argc, char** argv)
       {
         f64 sum = acc/num_pairs;
 
-        u64 end_tick = __rdtsc();
+        Profiling_End();
 
         printf("Input size: %llu\n", input_size);
         printf("Pair count: %llu\n", num_pairs);
@@ -421,15 +416,8 @@ main(int argc, char** argv)
           printf("Difference: %.16f\n", sum - expected_answers[expected_pair_count]);
         }
 
-        u64 rdtsc_freq = EstimateRDTSCFrequency(100);
-
-        u64 total_ticks = end_tick - start_tick;
-
-        printf("\nProfiling:\n");
-        printf("Total time: %.4f ms (estimated CPU freq %llu)\n", 1000.0 * (f64)total_ticks/rdtsc_freq, rdtsc_freq);
-        printf("Startup: %llu (%.2f%%)\n", timing_info.startup_ticks, 100.0 * (f64)timing_info.startup_ticks/total_ticks);
-        printf("Acc parse: %llu (%.2f%%)\n", timing_info.acc_parse_ticks, 100.0 * (f64)timing_info.acc_parse_ticks/total_ticks);
-        printf("Acc compute: %llu (%.2f%%)\n", timing_info.acc_compute_ticks, 100.0 * (f64)timing_info.acc_compute_ticks/total_ticks);
+        printf("\n");
+        Profiling_PrintResults();
       }
     }
   }
