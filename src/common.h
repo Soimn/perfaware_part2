@@ -159,6 +159,12 @@ static struct
   Timed_Block_Info blocks[1024];
 } ProfilingState = {0};
 
+#ifndef TIMED_BLOCK_PROFILING
+#define TIMED_BLOCK_PROFILING 0
+#endif
+
+#if TIMED_BLOCK_PROFILING
+
 typedef struct Timed_Block_State
 {
   u64 prev_acc;
@@ -197,10 +203,13 @@ TimedBlock__End(Timed_Block_State state)
   ProfilingState.blocks[state.parent].acc_ex -= elapsed;
 
   ProfilingState.current_block = state.parent;
-
 }
 
 #define TIMED_BLOCK(NAME) for (Timed_Block_State CONCAT(tbc__, __LINE__) = TimedBlock__Begin(__COUNTER__ + 1, (NAME)); CONCAT(tbc__, __LINE__).id != 0; TimedBlock__End(CONCAT(tbc__, __LINE__)), CONCAT(tbc__, __LINE__).id = 0)
+
+#else
+#define TIMED_BLOCK(NAME)
+#endif
 
 void
 Profiling_Begin()

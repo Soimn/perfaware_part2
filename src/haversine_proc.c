@@ -1,3 +1,4 @@
+#define TIMED_BLOCK_PROFILING 1
 #include "common.h"
 
 #include "../listings/listing_0065_haversine_formula.cpp"
@@ -75,7 +76,7 @@ NextToken(Lexer* lexer)
 {
   Token token = { .kind = Token_Invalid };
 
-  TIMED_BLOCK("NextToken")
+  //TIMED_BLOCK("NextToken")
   {
     u8* cursor = lexer->cursor;
 
@@ -98,7 +99,7 @@ NextToken(Lexer* lexer)
 
         case '"':
         {
-          TIMED_BLOCK("StringParsing")
+          //TIMED_BLOCK("StringParsing")
           {
             bool encountered_errors = false;
 
@@ -132,7 +133,7 @@ NextToken(Lexer* lexer)
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
         {
-          TIMED_BLOCK("NumberParsing")
+          //TIMED_BLOCK("NumberParsing")
           {
             bool is_negative = false;
             f64 number       = c&0xF;
@@ -258,33 +259,6 @@ EatTokens_(Lexer* lexer, umm token_count, Token_Kind* tokens)
 }
 
 #define EatTokens(lexer, ...) EatTokens_((lexer), sizeof((Token_Kind[]){__VA_ARGS__})/sizeof(Token_Kind), (Token_Kind[]){__VA_ARGS__})
-
-umm Fibonacci(umm n);
-
-umm
-FibShim(umm n)
-{
-  umm result = 0;
-  TIMED_BLOCK("FibShim")
-  {
-    result = Fibonacci(n);
-  }
-  return result;
-}
-
-umm
-Fibonacci(umm n)
-{
-  umm result = 0;
-
-  TIMED_BLOCK("Fib")
-  {
-    if (n <= 1) result = 1;
-    else        result = FibShim(n-1) + FibShim(n-2);
-  }
-
-  return result;
-}
 
 int
 main(int argc, char** argv)
@@ -448,8 +422,6 @@ main(int argc, char** argv)
     else
     {
       f64 sum = acc/num_pairs;
-
-      printf("fib_32: %llu\n", Fibonacci(32));
 
       Profiling_End();
 
