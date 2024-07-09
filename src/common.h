@@ -141,91 +141,106 @@ EstimateRDTSCFrequency(u32 timing_interval_ms)
   return elapsed_cpu_ticks * (perf_freq.QuadPart / elapsed_wall_ticks);
 }
 
-typedef struct Timed_Section_Info
+typedef struct Timed_Block_Info
 {
-  char* name;
   u64 acc;
-  u64 start;
-  u64 hits;
   u64 acc_children;
-  u64 parent;
-} Timed_Section_Info;
+  u64 acc_recur;
+  u64 hits;
+  u64 nesting;
+  char* name;
+} Timed_Block_Info;
 
-typedef struct Profiling_State
+static struct
 {
-  Timed_Section_Info timed_section_cache[1024];
   u64 start;
   u64 end;
-  u64 current_section;
-} Profiling_State;
 
-Profiling_State ProfilingState;
+  u32 current_block;
 
-u64
-TimedSection_Begin(u64 id, char* name)
+  Timed_Block_Info blocks[1024];
+} ProfilingState = {0};
+
+typedef struct Timed_Block_State
 {
-  ASSERT(id < ARRAY_SIZE(ProfilingState.timed_section_cache));
-  ASSERT(name != 0);
+  u64 start;
+  char* name;
+  u32 id;
+  u32 parent;
+} Timed_Block_State;
 
-  ProfilingState.timed_section_cache[id].name  = name;
-  ProfilingState.timed_section_cache[id].start = __rdtsc();
+Timed_Block_State
+TimedBlock__Begin(u32 id, char* name)
+{
+  Timed_Block_State state = {
+    .start  = __rdtsc(),
+    .name   = name,
+    .id     = id,
+    .parent = ProfilingState.current_block,
+  };
 
-  ProfilingState.timed_section_cache[id].parent = ProfilingState.current_section;
-  ProfilingState.current_section                = id;
+  ProfilingState.current_block = id;
 
-  return id;
+  ProfilingState.blocks[id].nesting += 1;
+
+  return state;
 }
 
 void
-TimedSection_End(u64 id)
+TimedBlock__End(Timed_Block_State state)
 {
-  u64 elapsed = __rdtsc() - ProfilingState.timed_section_cache[id].start;
+  u64 elapsed = __rdtsc() - state.start;
 
-  ProfilingState.timed_section_cache[id].acc  += elapsed;
-  ProfilingState.timed_section_cache[id].hits += 1;
+  ProfilingState.blocks[state.id].acc  += elapsed;
+  ProfilingState.blocks[state.id].hits += 1;
+  ProfilingState.blocks[state.id].name  = state.name;
 
-  ProfilingState.timed_section_cache[ProfilingState.timed_section_cache[id].parent].acc_children += elapsed;
+  ProfilingState.blocks[state.parent].acc_children += elapsed;
 
-  ASSERT(ProfilingState.current_section == id);
-  ProfilingState.current_section = ProfilingState.timed_section_cache[id].parent;
+  ProfilingState.current_block = state.parent;
+
+  ProfilingState.blocks[state.id].nesting -= 1;
+  ProfilingState.blocks[state.id].acc_recur += (ProfilingState.blocks[state.id].nesting != 0 ? elapsed : 0);
 }
 
-#define TIMED_BLOCK(NAME) for (s64 CONCAT(tb_c, __LINE__) = TimedSection_Begin(__COUNTER__ + 1, (NAME)); CONCAT(tb_c, __LINE__) != -1; TimedSection_End((u64)CONCAT(tb_c, __LINE__)), CONCAT(tb_c, __LINE__) = -1)
+#define TIMED_BLOCK(NAME) for (Timed_Block_State CONCAT(tbc__, __LINE__) = TimedBlock__Begin(__COUNTER__ + 1, (NAME)); CONCAT(tbc__, __LINE__).id != 0; TimedBlock__End(CONCAT(tbc__, __LINE__)), CONCAT(tbc__, __LINE__).id = 0)
 
 void
 Profiling_Begin()
 {
-  ZeroStruct(&ProfilingState);
   ProfilingState.start = __rdtsc();
 }
 
 void
 Profiling_End()
 {
+  ASSERT(__COUNTER__ + 1 <= ARRAY_SIZE(ProfilingState.blocks));
+
   ProfilingState.end = __rdtsc();
 }
 
 void
 Profiling_PrintResults()
 {
-  u64 total_ticks = ProfilingState.end - ProfilingState.start;
+  u64 total_elapsed = ProfilingState.end - ProfilingState.start;
 
   u64 rdtsc_freq = EstimateRDTSCFrequency(100);
 
-  printf("Total time: %.04fms (CPU freq %llu)\n", 1000.0 * (f64)total_ticks/rdtsc_freq, rdtsc_freq);
+  printf("Total time: %.4fms (CPU freq %llu)\n", 1000.0 * (f64)total_elapsed/rdtsc_freq, rdtsc_freq);
 
-  for (umm i = 0; i < ARRAY_SIZE(ProfilingState.timed_section_cache); ++i)
+  for (umm i = 0; i < ARRAY_SIZE(ProfilingState.blocks); ++i)
   {
-    Timed_Section_Info* ti = &ProfilingState.timed_section_cache[i];
+    Timed_Block_Info* block = &ProfilingState.blocks[i];
 
-    if (ti->name != 0)
+    if (block->name != 0)
     {
-      u64 elapsed = ti->acc - ti->acc_children;
+      u64 acc_ex = block->acc - block->acc_children;
 
-      printf("  %s[%llu]: %llu (%.2f%%", ti->name, ti->hits, elapsed, 100.0 * (f64)elapsed/total_ticks);
+      printf("  %s[%llu]: %llu (%.2f%%", block->name, block->hits, acc_ex, 100.0 * (f64)acc_ex/total_elapsed);
 
-      if (ti->acc_children != 0) printf(", %.2f%% w/children)\n", 100.0 * (f64)ti->acc/total_ticks);
-      else                       printf(")\n");
+      if (block->acc_children) printf(", w/children %.2f%%", 100.0 * (f64)(block->acc - block->acc_recur)/total_elapsed);
+
+      printf(")\n");
     }
   }
 }
