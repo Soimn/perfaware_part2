@@ -147,6 +147,8 @@ typedef struct Timed_Section_Info
   u64 acc;
   u64 start;
   u64 hits;
+  u64 acc_children;
+  u64 parent;
 } Timed_Section_Info;
 
 typedef struct Profiling_State
@@ -154,6 +156,7 @@ typedef struct Profiling_State
   Timed_Section_Info timed_section_cache[1024];
   u64 start;
   u64 end;
+  u64 current_section;
 } Profiling_State;
 
 Profiling_State ProfilingState;
@@ -167,17 +170,27 @@ TimedSection_Begin(u64 id, char* name)
   ProfilingState.timed_section_cache[id].name  = name;
   ProfilingState.timed_section_cache[id].start = __rdtsc();
 
+  ProfilingState.timed_section_cache[id].parent = ProfilingState.current_section;
+  ProfilingState.current_section                = id;
+
   return id;
 }
 
 void
 TimedSection_End(u64 id)
 {
-  ProfilingState.timed_section_cache[id].acc  += __rdtsc() - ProfilingState.timed_section_cache[id].start;
+  u64 elapsed = __rdtsc() - ProfilingState.timed_section_cache[id].start;
+
+  ProfilingState.timed_section_cache[id].acc  += elapsed;
   ProfilingState.timed_section_cache[id].hits += 1;
+
+  ProfilingState.timed_section_cache[ProfilingState.timed_section_cache[id].parent].acc_children += elapsed;
+
+  ASSERT(ProfilingState.current_section == id);
+  ProfilingState.current_section = ProfilingState.timed_section_cache[id].parent;
 }
 
-#define TIMED_BLOCK(NAME) for (s64 CONCAT(tb_c, __LINE__) = TimedSection_Begin(__COUNTER__, (NAME)); CONCAT(tb_c, __LINE__) != -1; TimedSection_End((u64)CONCAT(tb_c, __LINE__)), CONCAT(tb_c, __LINE__) = -1)
+#define TIMED_BLOCK(NAME) for (s64 CONCAT(tb_c, __LINE__) = TimedSection_Begin(__COUNTER__ + 1, (NAME)); CONCAT(tb_c, __LINE__) != -1; TimedSection_End((u64)CONCAT(tb_c, __LINE__)), CONCAT(tb_c, __LINE__) = -1)
 
 void
 Profiling_Begin()
@@ -207,7 +220,12 @@ Profiling_PrintResults()
 
     if (ti->name != 0)
     {
-      printf("  %s[%llu]: %llu (%.2f%%)\n", ti->name, ti->hits, ti->acc, 100.0 * (f64)ti->acc/total_ticks);
+      u64 elapsed = ti->acc - ti->acc_children;
+
+      printf("  %s[%llu]: %llu (%.2f%%", ti->name, ti->hits, elapsed, 100.0 * (f64)elapsed/total_ticks);
+
+      if (ti->acc_children != 0) printf(", %.2f%% w/children)\n", 100.0 * (f64)ti->acc/total_ticks);
+      else                       printf(")\n");
     }
   }
 }
