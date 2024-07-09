@@ -143,11 +143,9 @@ EstimateRDTSCFrequency(u32 timing_interval_ms)
 
 typedef struct Timed_Block_Info
 {
-  u64 acc;
-  u64 acc_children;
-  u64 acc_recur;
+  u64 acc_in;
+  u64 acc_ex;
   u64 hits;
-  u64 nesting;
   char* name;
 } Timed_Block_Info;
 
@@ -163,6 +161,7 @@ static struct
 
 typedef struct Timed_Block_State
 {
+  u64 prev_acc;
   u64 start;
   char* name;
   u32 id;
@@ -173,15 +172,14 @@ Timed_Block_State
 TimedBlock__Begin(u32 id, char* name)
 {
   Timed_Block_State state = {
-    .start  = __rdtsc(),
-    .name   = name,
-    .id     = id,
-    .parent = ProfilingState.current_block,
+    .prev_acc = ProfilingState.blocks[id].acc_in,
+    .start    = __rdtsc(),
+    .name     = name,
+    .id       = id,
+    .parent   = ProfilingState.current_block,
   };
 
   ProfilingState.current_block = id;
-
-  ProfilingState.blocks[id].nesting += 1;
 
   return state;
 }
@@ -191,16 +189,15 @@ TimedBlock__End(Timed_Block_State state)
 {
   u64 elapsed = __rdtsc() - state.start;
 
-  ProfilingState.blocks[state.id].acc  += elapsed;
-  ProfilingState.blocks[state.id].hits += 1;
-  ProfilingState.blocks[state.id].name  = state.name;
+  ProfilingState.blocks[state.id].acc_ex  += elapsed;
+  ProfilingState.blocks[state.id].acc_in   = state.prev_acc + elapsed;
+  ProfilingState.blocks[state.id].hits    += 1;
+  ProfilingState.blocks[state.id].name     = state.name;
 
-  ProfilingState.blocks[state.parent].acc_children += elapsed;
+  ProfilingState.blocks[state.parent].acc_ex -= elapsed;
 
   ProfilingState.current_block = state.parent;
 
-  ProfilingState.blocks[state.id].nesting -= 1;
-  ProfilingState.blocks[state.id].acc_recur += (ProfilingState.blocks[state.id].nesting != 0 ? elapsed : 0);
 }
 
 #define TIMED_BLOCK(NAME) for (Timed_Block_State CONCAT(tbc__, __LINE__) = TimedBlock__Begin(__COUNTER__ + 1, (NAME)); CONCAT(tbc__, __LINE__).id != 0; TimedBlock__End(CONCAT(tbc__, __LINE__)), CONCAT(tbc__, __LINE__).id = 0)
@@ -234,11 +231,9 @@ Profiling_PrintResults()
 
     if (block->name != 0)
     {
-      u64 acc_ex = block->acc - block->acc_children;
+      printf("  %s[%llu]: %llu (%.2f%%", block->name, block->hits, block->acc_ex, 100.0 * (f64)block->acc_ex/total_elapsed);
 
-      printf("  %s[%llu]: %llu (%.2f%%", block->name, block->hits, acc_ex, 100.0 * (f64)acc_ex/total_elapsed);
-
-      if (block->acc_children) printf(", w/children %.2f%%", 100.0 * (f64)(block->acc - block->acc_recur)/total_elapsed);
+      if (block->acc_in != block->acc_ex) printf(", w/children %.2f%%", 100.0 * (f64)block->acc_in/total_elapsed);
 
       printf(")\n");
     }
