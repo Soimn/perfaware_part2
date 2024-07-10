@@ -147,6 +147,7 @@ typedef struct Timed_Block_Info
   u64 acc_ex;
   u64 hits;
   char* name;
+  u64 bytes_processed;
 } Timed_Block_Info;
 
 static struct
@@ -175,17 +176,20 @@ typedef struct Timed_Block_State
 } Timed_Block_State;
 
 Timed_Block_State
-TimedBlock__Begin(u32 id, char* name)
+TimedBlock__Begin(u32 id, char* name, u64 bytes_processed, u32* id_out)
 {
   Timed_Block_State state = {
-    .prev_acc = ProfilingState.blocks[id].acc_in,
-    .start    = __rdtsc(),
-    .name     = name,
-    .id       = id,
-    .parent   = ProfilingState.current_block,
+    .prev_acc        = ProfilingState.blocks[id].acc_in,
+    .start           = __rdtsc(),
+    .name            = name,
+    .id              = id,
+    .parent          = ProfilingState.current_block,
   };
 
+  ProfilingState.blocks[id].bytes_processed += bytes_processed;
+
   ProfilingState.current_block = id;
+  *id_out                      = id;
 
   return state;
 }
@@ -205,10 +209,19 @@ TimedBlock__End(Timed_Block_State state)
   ProfilingState.current_block = state.parent;
 }
 
-#define TIMED_BLOCK(NAME) for (Timed_Block_State CONCAT(tbc__, __LINE__) = TimedBlock__Begin(__COUNTER__ + 1, (NAME)); CONCAT(tbc__, __LINE__).id != 0; TimedBlock__End(CONCAT(tbc__, __LINE__)), CONCAT(tbc__, __LINE__).id = 0)
+#define TIMED_BLOCK(NAME, BP, ID_OUT) for (Timed_Block_State CONCAT(tbc__, __LINE__) = TimedBlock__Begin(__COUNTER__ + 1, (NAME), (BP), (ID_OUT)); CONCAT(tbc__, __LINE__).id != 0; TimedBlock__End(CONCAT(tbc__, __LINE__)), CONCAT(tbc__, __LINE__).id = 0)
+
+#define TIME_BLOCK(NAME) TIMED_BLOCK((NAME), 0, &(u32){0})
+#define TIME_BANDWIDTH(NAME, BYTES_PROCESSED) TIMED_BLOCK((NAME), (BYTES_PROCESSED), &(u32){0})
+#define TIME_ANNOTATED_BLOCK(NAME, ID_OUT) TIMED_BLOCK((NAME), 0, (ID_OUT))
+#define TIME_ANNOTATED_BANDWIDTH(NAME, BYTES_PROCESSED, ID_OUT) TIMED_BLOCK((NAME), (BYTES_PROCESSED), (ID_OUT))
+#define ANNOTATE_BYTES_PROCESSED(ID, BYTES) ProfilingState.blocks[ID].bytes_processed = (BYTES)
 
 #else
-#define TIMED_BLOCK(NAME)
+#define TIMED_BLOCK(...)
+#define TIME_BLOCK(...)
+#define TIME_BANDWIDTH(...)
+#define ANNOTATE_BYTES_PROCESSED(...)
 #endif
 
 void
@@ -232,7 +245,9 @@ Profiling_PrintResults()
 
   u64 rdtsc_freq = EstimateRDTSCFrequency(100);
 
-  printf("Total time: %.4fms (CPU freq %llu)\n", 1000.0 * (f64)total_elapsed/rdtsc_freq, rdtsc_freq);
+  f64 total_seconds_elapsed = (f64)total_elapsed/rdtsc_freq;
+
+  printf("Total time: %.4fms (CPU freq %llu)\n", 1000.0 * total_seconds_elapsed, rdtsc_freq);
 
   for (umm i = 0; i < ARRAY_SIZE(ProfilingState.blocks); ++i)
   {
@@ -244,7 +259,18 @@ Profiling_PrintResults()
 
       if (block->acc_in != block->acc_ex) printf(", w/children %.2f%%", 100.0 * (f64)block->acc_in/total_elapsed);
 
-      printf(")\n");
+      printf(")");
+
+      if (block->bytes_processed != 0)
+      {
+        f64 mbs_processed   = (f64)block->bytes_processed/(1024.0*1024.0);
+        f64 gbs_processed   = mbs_processed/(1024.0);
+        f64 seconds_elapsed = (f64)block->acc_in/rdtsc_freq;
+
+        printf(" %.2f MB at %.4f GB/s", mbs_processed, gbs_processed/seconds_elapsed);
+      }
+
+      printf("\n");
     }
   }
 }

@@ -76,7 +76,7 @@ NextToken(Lexer* lexer)
 {
   Token token = { .kind = Token_Invalid };
 
-  //TIMED_BLOCK("NextToken")
+  //TIME_BLOCK("NextToken")
   {
     u8* cursor = lexer->cursor;
 
@@ -99,7 +99,7 @@ NextToken(Lexer* lexer)
 
         case '"':
         {
-          //TIMED_BLOCK("StringParsing")
+          //TIME_BLOCK("StringParsing")
           {
             bool encountered_errors = false;
 
@@ -133,7 +133,7 @@ NextToken(Lexer* lexer)
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
         {
-          //TIMED_BLOCK("NumberParsing")
+          //TIME_BLOCK("NumberParsing")
           {
             bool is_negative = false;
             f64 number       = c&0xF;
@@ -275,7 +275,8 @@ main(int argc, char** argv)
   f64* expected_answers     = 0;
   u64 expected_answers_size = 0;
 
-  TIMED_BLOCK("Startup")
+  u32 startup_block;
+  TIME_ANNOTATED_BLOCK("Startup", &startup_block)
   {
     if (argc < 2 || argc > 3)
     {
@@ -297,6 +298,8 @@ main(int argc, char** argv)
     }
   }
 
+  ANNOTATE_BYTES_PROCESSED(startup_block, input_size + expected_answers_size);
+
   if (!encountered_errors)
   {
     umm expected_pair_count = expected_answers_size/sizeof(f64) - 1;
@@ -311,13 +314,14 @@ main(int argc, char** argv)
     }
     else
     {
+      u32 parse_block;
       for (;;)
       {
         #define NIL_COORD 512
         f64 coords[4] = { NIL_COORD, NIL_COORD, NIL_COORD, NIL_COORD };
         f64 bounds[4] = { 180, 180, 90, 90};
 
-        TIMED_BLOCK("Parse")
+        TIME_ANNOTATED_BLOCK("Parse", &parse_block)
         {
           if (!EatToken(&lexer, Token_OpenBrace))
           {
@@ -398,7 +402,7 @@ main(int argc, char** argv)
           }
         }
 
-        TIMED_BLOCK("Compute")
+        TIME_BANDWIDTH("Compute", 4*sizeof(f64))
         {
           f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
           acc += answer;
@@ -415,6 +419,8 @@ main(int argc, char** argv)
         //// ERROR: Missing ]} or extra elements in outermost object
         encountered_errors = true;
       }
+
+      ANNOTATE_BYTES_PROCESSED(parse_block, input_size);
     }
 
     if      (encountered_errors)                                        fprintf(stderr, "Input file is ill-formed\n");
