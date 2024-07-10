@@ -402,7 +402,7 @@ main(int argc, char** argv)
           }
         }
 
-        TIME_BANDWIDTH("Compute", 4*sizeof(f64))
+        TIME_THROUGHPUT("Compute", 4*sizeof(f64))
         {
           f64 answer = ReferenceHaversine(coords[0], coords[2], coords[1], coords[3], 6372.8);
           acc += answer;
