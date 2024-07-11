@@ -34,6 +34,7 @@ cl %compile_options% ..\src\haversine_gen.c /link %link_options% /pdb:haversine_
 cl %compile_options% ..\src\haversine_proc.c /link %link_options% /pdb:haversine_proc.pdb /out:haversine_proc.exe
 
 cl %compile_options% ..\src\reptest_read.c /link %link_options% /pdb:reptest_read.pdb /out:reptest_read.exe
+cl %compile_options% ..\src\pagefault_testing.c /link %link_options% /pdb:pagefault_testing.pdb /out:pagefault_testing.exe
 
 goto end
 

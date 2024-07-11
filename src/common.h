@@ -5,6 +5,7 @@
 #define WIN32_MEAN_AND_LEAN 1
 #define VC_EXTRALEAN        1
 #include <windows.h>
+#include <psapi.h>
 #undef NOMINMAX
 #undef WIN32_LEAN_AND_MEAN
 #undef WIN32_MEAN_AND_LEAN
@@ -133,6 +134,23 @@ Zero(void* p, umm size)
 }
 
 #define ZeroStruct(S) Zero((S), sizeof(0[S]))
+
+static struct
+{
+  HANDLE mem_info_handle;
+} GlobalMetrics;
+
+u64
+GetPageFaultCounter()
+{
+  static HANDLE handle = INVALID_HANDLE_VALUE;
+
+  if (handle == INVALID_HANDLE_VALUE) handle = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, GetCurrentProcessId());
+
+  PROCESS_MEMORY_COUNTERS counters = { .cb = sizeof(PROCESS_MEMORY_COUNTERS) };
+  GetProcessMemoryInfo(handle, &counters, sizeof(PROCESS_MEMORY_COUNTERS));
+  return counters.PageFaultCount;
+}
 
 u64
 EstimateRDTSCFrequency(u32 timing_interval_ms)
@@ -295,5 +313,156 @@ Profiling_PrintResults()
 
       printf("\n");
     }
+  }
+}
+
+typedef enum Reptest_State
+{
+  ReptestState_Error = 0,
+  ReptestState_ReadyToStartRound,
+  ReptestState_RoundInProgress,
+  ReptestState_RoundFinished,
+} Reptest_State;
+
+typedef struct Reptest
+{
+  Reptest_State state;
+
+  u64 elapsed;
+  u64 page_faults;
+  u64 bytes_processed;
+
+  u64 test_count;
+  u64 acc_time;
+  u64 acc_page_faults;
+  u64 min_time;
+  u64 min_time_page_faults;
+  u64 max_time;
+  u64 max_time_page_faults;
+  f64 idle_time;
+
+  char* name;
+  u64 rdtsc_freq;
+  u64 bytes_to_process;
+  f64 idle_time_threshold;
+} Reptest;
+
+void
+Reptest_BeginTestSection(Reptest* test)
+{
+  test->elapsed     -= __rdtsc();
+  test->page_faults -= GetPageFaultCounter();
+}
+
+void
+Reptest_EndTestSection(Reptest* test)
+{
+  test->elapsed     += __rdtsc();
+  test->page_faults += GetPageFaultCounter();
+}
+
+void
+Reptest_AddBytesProcessed(Reptest* test, u64 bytes)
+{
+  test->bytes_processed += bytes;
+}
+
+void
+Reptest_Error(Reptest* test, char* message)
+{
+  fprintf(stderr, "\r%s\n", message);
+  test->state = ReptestState_Error;
+}
+
+bool
+Reptest_RoundIsNotDone(Reptest* test)
+{
+  if (test->state == ReptestState_ReadyToStartRound)
+  {
+    test->test_count           = 0;
+    test->acc_time             = 0;
+    test->acc_page_faults      = 0;
+    test->min_time             = U64_MAX;
+    test->min_time_page_faults = 0;
+    test->max_time             = 0;
+    test->max_time_page_faults = 0;
+
+    test->elapsed         = 0;
+    test->page_faults     = 0;
+    test->bytes_processed = 0;
+
+    test->state = ReptestState_RoundInProgress;
+  }
+  else if (test->state == ReptestState_RoundInProgress)
+  {
+    if (test->bytes_processed != test->bytes_to_process) Reptest_Error(test, "Invalid byte count");
+    else
+    {
+      test->test_count      += 1;
+      test->acc_time        += test->elapsed;
+      test->acc_page_faults += test->page_faults;
+      
+      if (test->elapsed > test->max_time)
+      {
+        test->max_time             = test->elapsed;
+        test->max_time_page_faults = test->page_faults;
+      }
+
+      test->idle_time += (f64)test->elapsed/test->rdtsc_freq;
+      if (test->elapsed < test->min_time)
+      {
+        test->min_time             = test->elapsed;
+        test->min_time_page_faults = test->page_faults;
+
+        test->idle_time = 0;
+
+        printf("\rMin: %llu (%.6f ns) %.6f GB/s   ", test->min_time, 1.0e9 * (f64)test->min_time/test->rdtsc_freq, (f64)test->bytes_processed/GIGABYTE * (f64)test->rdtsc_freq/test->min_time);
+      }
+
+      if (test->idle_time >= test->idle_time_threshold) test->state = ReptestState_RoundFinished;
+      else
+      {
+        test->elapsed         = 0;
+        test->page_faults     = 0;
+        test->bytes_processed = 0;
+        // NOTE: continue testing
+      }
+    }
+  }
+
+  return (test->state == ReptestState_RoundInProgress);
+}
+
+void
+Reptest_BeginRound(Reptest* test)
+{
+  printf("\n--- %s ---\n", test->name);
+  test->state = ReptestState_ReadyToStartRound;
+}
+
+void
+Reptest_EndRound(Reptest* test)
+{
+  ASSERT(test->state == ReptestState_RoundFinished || test->state == ReptestState_Error);
+
+  if (test->state == ReptestState_RoundFinished)
+  {
+    f64 min_time_ns         = 1.0e9 * (f64)test->min_time/test->rdtsc_freq;
+    f64 min_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)test->rdtsc_freq/test->min_time;
+    f64 min_time_kbpfault   = (f64)test->bytes_processed/(KILOBYTE*test->min_time_page_faults);
+
+    f64 max_time_ns         = 1.0e9 * (f64)test->max_time/test->rdtsc_freq;
+    f64 max_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)test->rdtsc_freq/test->max_time;
+    f64 max_time_kbpfault   = (f64)test->bytes_processed/(KILOBYTE*test->max_time_page_faults);
+
+    f64 avg_time = (f64)test->acc_time/test->test_count;
+    f64 avg_time_ns         = 1.0e9 * (f64)avg_time/test->rdtsc_freq;
+    f64 avg_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)test->rdtsc_freq/avg_time;
+    f64 avg_time_kbpfault   = (f64)(test->test_count*test->bytes_processed)/(KILOBYTE*test->acc_page_faults);
+
+    printf("\r");
+    printf("Min: %llu (%.6f ns) %.6f GB/s, PF: %llu, (%.6f KB/fault)\n", test->min_time, min_time_ns, min_time_throughput, test->min_time_page_faults, min_time_kbpfault);
+    printf("Max: %llu (%.6f ns) %.6f GB/s, PF: %llu, (%.6f KB/fault)\n", test->max_time, max_time_ns, max_time_throughput, test->max_time_page_faults, max_time_kbpfault);
+    printf("Avg: %llu (%.6f ns) %.6f GB/s, PF: %llu, (%.6f KB/fault)\n", test->min_time, avg_time_ns, avg_time_throughput, test->acc_page_faults,      avg_time_kbpfault);
   }
 }
