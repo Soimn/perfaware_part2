@@ -33,6 +33,8 @@ cl %compile_options% ..\listings\listing_0067_simple_haversine_main.cpp /link %l
 cl %compile_options% ..\src\haversine_gen.c /link %link_options% /pdb:haversine_gen.pdb /out:haversine_gen.exe
 cl %compile_options% ..\src\haversine_proc.c /link %link_options% /pdb:haversine_proc.pdb /out:haversine_proc.exe
 
+cl %compile_options% ..\src\reptest_read.c /link %link_options% /pdb:reptest_read.pdb /out:reptest_read.exe
+
 goto end
 
 :invalid_arguments

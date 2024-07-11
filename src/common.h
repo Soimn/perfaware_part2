@@ -1,3 +1,5 @@
+#pragma once
+
 #define NOMINMAX            1
 #define WIN32_LEAN_AND_MEAN 1
 #define WIN32_MEAN_AND_LEAN 1
@@ -21,10 +23,25 @@ typedef unsigned __int16 u16;
 typedef unsigned __int32 u32;
 typedef unsigned __int64 u64;
 
+#define U8_MAX  0xFFU
+#define U16_MAX 0xFFFFU
+#define U32_MAX 0xFFFFFFFFU
+#define U64_MAX 0xFFFFFFFFFFFFFFFFUL
+
 typedef signed __int8  s8;
 typedef signed __int16 s16;
 typedef signed __int32 s32;
 typedef signed __int64 s64;
+
+#define S8_MIN  0x80D
+#define S16_MIN 0x8000D
+#define S32_MIN 0x80000000D
+#define S64_MIN 0x8000000000000000DL
+
+#define S8_MAX  0x7FD
+#define S16_MAX 0x7FFFD
+#define S32_MAX 0x7FFFFFFFD
+#define S64_MAX 0x7FFFFFFFFFFFFFFFDL
 
 typedef u64 umm;
 typedef s64 smm;
@@ -38,6 +55,10 @@ typedef u8 bool;
 
 #define PI       3.14159265358979323846264338327950
 #define PI_DIV_2 1.57079632679489661923132169163975
+
+#define KILOBYTE 1024
+#define MEGABYTE (1024*1024)
+#define GIGABYTE (1024*1024*1024)
 
 #define ARRAY_SIZE(A) (sizeof(A)/sizeof(0[A]))
 
