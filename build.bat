@@ -14,9 +14,8 @@ if "%Platform%" neq "x64" (
 
 set "common_compile_options= /nologo /W3 /wd4116"
 set "common_link_options= /incremental:no /opt:ref /subsystem:console"
-
 set "debug_compile_options=%common_compile_options% /Od /Zo /Z7 /RTC1 /MTd"
-set "release_compile_options=%common_compile_options% /O2"
+set "release_compile_options=%common_compile_options% /O2 /Zo /Z7"
 set "link_options=%common_link_options%"
 
 if "%1"=="debug" (
@@ -35,6 +34,7 @@ cl %compile_options% ..\src\haversine_proc.c /link %link_options% /pdb:haversine
 
 cl %compile_options% ..\src\reptest_read.c /link %link_options% /pdb:reptest_read.pdb /out:reptest_read.exe
 cl %compile_options% ..\src\pagefault_testing.c /link %link_options% /pdb:pagefault_testing.pdb /out:pagefault_testing.exe
+cl %compile_options% ..\src\reptest_write.c /link %link_options% /pdb:reptest_write.pdb /out:reptest_write.exe
 
 goto end
 

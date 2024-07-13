@@ -70,7 +70,7 @@ typedef u8 bool;
 #define CONCAT_(A, B) CONCAT__(A, B)
 #define CONCAT(A, B) CONCAT_(A, B)
 
-void
+static void
 AssertHandler(char* file, umm line, char* expr)
 {
   fprintf(stderr, "ASSERTION FAILED\n%s(%llu): %s\n", file, line, expr);
@@ -78,25 +78,25 @@ AssertHandler(char* file, umm line, char* expr)
   *(volatile int*)0 = 0;
 }
 
-bool
+static bool
 Char_IsWhitespace(u8 c)
 {
   return (c == ' ' || c == '\n' || c == '\r' || c == '\t');
 }
 
-bool
+static bool
 Char_IsDigit(u8 c)
 {
   return ((u8)(c-0x30) < (u8)10);
 }
 
-bool
+static bool
 Char_IsHexAlphaDigit(u8 c)
 {
   return ((u8)((c&0xDF) - 'A') <= (u8)('F' - 'A'));
 }
 
-bool
+static bool
 ReadEntireFile(char* filename, void** contents, u64* size)
 {
   bool succeeded = false;
@@ -126,7 +126,7 @@ ReadEntireFile(char* filename, void** contents, u64* size)
   return succeeded;
 }
 
-void
+static void
 Zero(void* p, umm size)
 {
   u8* bp = (u8*)p;
@@ -135,12 +135,19 @@ Zero(void* p, umm size)
 
 #define ZeroStruct(S) Zero((S), sizeof(0[S]))
 
+static void
+Memset(void* p, umm size, u8 val)
+{
+  u8* bp = (u8*)p;
+  for (umm i = 0; i < size; ++i) bp[i] = val;
+}
+
 static struct
 {
   HANDLE mem_info_handle;
 } GlobalMetrics;
 
-u64
+static u64
 GetPageFaultCounter()
 {
   static HANDLE handle = INVALID_HANDLE_VALUE;
@@ -152,7 +159,7 @@ GetPageFaultCounter()
   return counters.PageFaultCount;
 }
 
-u64
+static u64
 EstimateRDTSCFrequency(u32 timing_interval_ms)
 {
   LARGE_INTEGER perf_freq;
@@ -214,7 +221,7 @@ typedef struct Timed_Block_State
   u32 parent;
 } Timed_Block_State;
 
-Timed_Block_State
+static Timed_Block_State
 TimedBlock__Begin(u32 id, char* name, u64 bytes_processed, u32* id_out)
 {
   Timed_Block_State state = {
@@ -233,7 +240,7 @@ TimedBlock__Begin(u32 id, char* name, u64 bytes_processed, u32* id_out)
   return state;
 }
 
-void
+static void
 TimedBlock__End(Timed_Block_State state)
 {
   u64 elapsed = __rdtsc() - state.start;
@@ -265,13 +272,13 @@ TimedBlock__End(Timed_Block_State state)
 #define ANNOTATE_BYTES_PROCESSED(...)
 #endif
 
-void
+static void
 Profiling_Begin()
 {
   ProfilingState.start = __rdtsc();
 }
 
-void
+static void
 Profiling_End()
 {
   ASSERT(__COUNTER__ + 1 <= ARRAY_SIZE(ProfilingState.blocks));
@@ -279,7 +286,7 @@ Profiling_End()
   ProfilingState.end = __rdtsc();
 }
 
-void
+static void
 Profiling_PrintResults()
 {
   u64 total_elapsed = ProfilingState.end - ProfilingState.start;
@@ -347,34 +354,34 @@ typedef struct Reptest
   f64 idle_time_threshold;
 } Reptest;
 
-void
+static void
 Reptest_BeginTestSection(Reptest* test)
 {
   test->elapsed     -= __rdtsc();
   test->page_faults -= GetPageFaultCounter();
 }
 
-void
+static void
 Reptest_EndTestSection(Reptest* test)
 {
   test->elapsed     += __rdtsc();
   test->page_faults += GetPageFaultCounter();
 }
 
-void
+static void
 Reptest_AddBytesProcessed(Reptest* test, u64 bytes)
 {
   test->bytes_processed += bytes;
 }
 
-void
+static void
 Reptest_Error(Reptest* test, char* message)
 {
   fprintf(stderr, "\r%s\n", message);
   test->state = ReptestState_Error;
 }
 
-bool
+static bool
 Reptest_RoundIsNotDone(Reptest* test)
 {
   if (test->state == ReptestState_ReadyToStartRound)
@@ -433,14 +440,14 @@ Reptest_RoundIsNotDone(Reptest* test)
   return (test->state == ReptestState_RoundInProgress);
 }
 
-void
+static void
 Reptest_BeginRound(Reptest* test)
 {
   printf("\n--- %s ---\n", test->name);
   test->state = ReptestState_ReadyToStartRound;
 }
 
-void
+static void
 Reptest_EndRound(Reptest* test)
 {
   ASSERT(test->state == ReptestState_RoundFinished || test->state == ReptestState_Error);
