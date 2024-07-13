@@ -178,6 +178,7 @@ main(int argc, char** argv)
 
       Reptest tests[ARRAY_SIZE(TestFuncs)];
       u64 rdtsc_freq = EstimateRDTSCFrequency(100);
+      printf("rdtsc_freq: %llu\n", rdtsc_freq);
 
       // NOTE: touch entire dest buffer
       Zero(test_params.dest, test_params.size);

@@ -4,7 +4,6 @@ typedef struct Write_Params
 {
   void* dest;
   umm size;
-  u8 val;
 } Write_Params;
 
 void
@@ -25,12 +24,21 @@ Test_WriteBytewise(Reptest* test, Write_Params params)
   }
 }
 
+void Test_MovBytewise(Reptest* test, Write_Params params);
+void Test_NopBytewise(Reptest* test, Write_Params params);
+void Test_CmpBytewise(Reptest* test, Write_Params params);
+void Test_DecBytewise(Reptest* test, Write_Params params);
+
 struct
 {
   char* name;
   void (*func)(Reptest* state, Write_Params params);
 } WriteTests[] = {
   "write bytewise", Test_WriteBytewise,
+  "mov bytewise",   Test_MovBytewise,
+  "nop bytewise",   Test_NopBytewise,
+  "cmp bytewise",   Test_CmpBytewise,
+  "dec bytewise",   Test_DecBytewise,
 };
 
 int
@@ -47,7 +55,7 @@ main(int argc, char** argv)
     if (dest == 0) fprintf(stderr, "Failed to allocate memory\n");
     else
     {
-      Write_Params params = { .dest = dest, .size = size, .val = 0xAA };
+      Write_Params params = { .dest = dest, .size = size };
 
       u64 rdtsc_freq = EstimateRDTSCFrequency(100);
       printf("rdtsc_freq: %llu\n", rdtsc_freq);

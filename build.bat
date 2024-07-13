@@ -34,7 +34,13 @@ cl %compile_options% ..\src\haversine_proc.c /link %link_options% /pdb:haversine
 
 cl %compile_options% ..\src\reptest_read.c /link %link_options% /pdb:reptest_read.pdb /out:reptest_read.exe
 cl %compile_options% ..\src\pagefault_testing.c /link %link_options% /pdb:pagefault_testing.pdb /out:pagefault_testing.exe
-cl %compile_options% ..\src\reptest_write.c /link %link_options% /pdb:reptest_write.pdb /out:reptest_write.exe
+
+del reptest_write_asm.*
+del reptest_write.*
+
+nasm -o reptest_write_asm.obj -f win64 ..\src\reptest_write.asm
+
+cl %compile_options% /O1 ..\src\reptest_write.c /link %link_options% /pdb:reptest_write.pdb /out:reptest_write.exe reptest_write_asm.obj
 
 goto end
 

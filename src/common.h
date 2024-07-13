@@ -354,21 +354,21 @@ typedef struct Reptest
   f64 idle_time_threshold;
 } Reptest;
 
-static void
+void
 Reptest_BeginTestSection(Reptest* test)
 {
   test->elapsed     -= __rdtsc();
   test->page_faults -= GetPageFaultCounter();
 }
 
-static void
+void
 Reptest_EndTestSection(Reptest* test)
 {
   test->elapsed     += __rdtsc();
   test->page_faults += GetPageFaultCounter();
 }
 
-static void
+void
 Reptest_AddBytesProcessed(Reptest* test, u64 bytes)
 {
   test->bytes_processed += bytes;
@@ -381,7 +381,7 @@ Reptest_Error(Reptest* test, char* message)
   test->state = ReptestState_Error;
 }
 
-static bool
+bool
 Reptest_RoundIsNotDone(Reptest* test)
 {
   if (test->state == ReptestState_ReadyToStartRound)
