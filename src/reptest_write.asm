@@ -3,175 +3,92 @@ extern Reptest_BeginTestSection
 extern Reptest_EndTestSection
 extern Reptest_AddBytesProcessed
 
-global Test_MovBytewise
-global Test_NopBytewise
-global Test_CmpBytewise
-global Test_DecBytewise
+global Test_MovBytewiseLoop
+global Test_MovUnrolledBytewiseLoop
+global Test_NopBytewiseLoop
+global Test_Nop3BytewiseLoop
+global Test_Nop9BytewiseLoop
+global Test_CmpBytewiseLoop
+global Test_DecBytewiseLoop
 
 section .text
 
-; void Test_MovBytewise(Reptest* test, Write_Params params)
-Test_MovBytewise:
-  enter 32, 0
-
-  mov [rsp], rcx
-
-  mov r8, [rdx+0]
-  mov [rsp+8], r8
-  mov r8, [rdx+8]
-  mov [rsp+16], r8
-
-  .round_not_done:
-    mov rcx, [rsp]
-    call Reptest_RoundIsNotDone
-    test al, al
-    jz .round_done
-
-    mov rcx, [rsp]
-    call Reptest_BeginTestSection
-    
-    xor rax, rax
-    mov rcx, [rsp+8]
-    mov rdx, [rsp+16]
-    .loop:
-      mov byte [rcx + rax], al
-      inc rax
-      cmp rax, rdx
-      jb .loop
-
-    mov rcx, [rsp]
-    call Reptest_EndTestSection
-
-    mov rcx, [rsp]
-    mov rdx, [rsp+16]
-    call Reptest_AddBytesProcessed
-
-    jmp .round_not_done
-  .round_done:
-
-  leave
+Test_MovBytewiseLoop:
+  xor rax, rax
+  .loop:
+    mov [rdx + rax], al
+    inc rax
+    cmp rax, rcx
+    jb .loop
   ret
 
-; void Test_NopBytewise(Reptest* test, Write_Params params)
-Test_NopBytewise:
-  enter 32, 0
+Test_MovUnrolledBytewiseLoop:
+  xor rax, rax
+  test rcx, 1
+  jz .loop
+  mov [rdx + rax], al
+  inc rax
+  cmp rax, rcx
+  jb .loop
 
-  mov [rsp], rcx
-
-  mov r8, [rdx+0]
-  mov [rsp+8], r8
-  mov r8, [rdx+8]
-  mov [rsp+16], r8
-
-  .round_not_done:
-    mov rcx, [rsp]
-    call Reptest_RoundIsNotDone
-    test al, al
-    jz .round_done
-
-    mov rcx, [rsp]
-    call Reptest_BeginTestSection
-    
-    xor rax, rax
-    mov rdx, [rsp+8]
-    mov rcx, [rsp+16]
-    .loop:
-      db 0x0F, 0x1F, 0x00 ; 3 Byte NOP
-      inc rax
-      cmp rax, rcx
-      jb .loop
-
-    mov rcx, [rsp]
-    call Reptest_EndTestSection
-
-    mov rcx, [rsp]
-    mov rdx, [rsp+16]
-    call Reptest_AddBytesProcessed
-
-    jmp .round_not_done
-  .round_done:
-
-  leave
+  .loop:
+    mov [rdx + rax], al
+    inc rax
+    mov [rdx + rax], al
+    inc rax
+    cmp rax, rcx
+    jb .loop
   ret
 
-; void Test_CmpBytewise(Reptest* test, Write_Params params)
-Test_CmpBytewise:
-  enter 32, 0
-
-  mov [rsp], rcx
-
-  mov r8, [rdx+0]
-  mov [rsp+8], r8
-  mov r8, [rdx+8]
-  mov [rsp+16], r8
-
-  .round_not_done:
-    mov rcx, [rsp]
-    call Reptest_RoundIsNotDone
-    test al, al
-    jz .round_done
-
-    mov rcx, [rsp]
-    call Reptest_BeginTestSection
-    
-    xor rax, rax
-    mov rdx, [rsp+8]
-    mov rcx, [rsp+16]
-    .loop:
-      inc rax
-      cmp rax, rcx
-      jb .loop
-
-    mov rcx, [rsp]
-    call Reptest_EndTestSection
-
-    mov rcx, [rsp]
-    mov rdx, [rsp+16]
-    call Reptest_AddBytesProcessed
-
-    jmp .round_not_done
-  .round_done:
-
-  leave
+Test_NopBytewiseLoop:
+  xor rax, rax
+  .loop:
+    db 0x0F, 0x1F, 0x00 ; 3 byte nop
+    inc rax
+    cmp rax, rcx
+    jb .loop
   ret
 
-; void Test_DecBytewise(Reptest* test, Write_Params params)
-Test_DecBytewise:
-  enter 32, 0
+Test_Nop3BytewiseLoop:
+  xor rax, rax
+  .loop:
+    nop
+    nop
+    nop
+    inc rax
+    cmp rax, rcx
+    jb .loop
+  ret
 
-  mov [rsp], rcx
+Test_Nop9BytewiseLoop:
+  xor rax, rax
+  .loop:
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    inc rax
+    cmp rax, rcx
+    jb .loop
+  ret
 
-  mov r8, [rdx+0]
-  mov [rsp+8], r8
-  mov r8, [rdx+8]
-  mov [rsp+16], r8
+Test_CmpBytewiseLoop:
+  xor rax, rax
+  .loop:
+    inc rax
+    cmp rax, rcx
+    jb .loop
+  ret
 
-  .round_not_done:
-    mov rcx, [rsp]
-    call Reptest_RoundIsNotDone
-    test al, al
-    jz .round_done
-
-    mov rcx, [rsp]
-    call Reptest_BeginTestSection
-    
-    mov rdx, [rsp+8]
-    mov rcx, [rsp+16]
-    lea rax, [rcx-1]
-    .loop:
-      dec rax
-      cmp rax, rcx
-      jb .loop
-
-    mov rcx, [rsp]
-    call Reptest_EndTestSection
-
-    mov rcx, [rsp]
-    mov rdx, [rsp+16]
-    call Reptest_AddBytesProcessed
-
-    jmp .round_not_done
-  .round_done:
-
-  leave
+Test_DecBytewiseLoop:
+  xor rax, rax
+  .loop:
+    dec rcx
+    test rcx, rcx
+    jnz .loop
   ret

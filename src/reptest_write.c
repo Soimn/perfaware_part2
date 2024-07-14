@@ -24,10 +24,124 @@ Test_WriteBytewise(Reptest* test, Write_Params params)
   }
 }
 
-void Test_MovBytewise(Reptest* test, Write_Params params);
-void Test_NopBytewise(Reptest* test, Write_Params params);
-void Test_CmpBytewise(Reptest* test, Write_Params params);
-void Test_DecBytewise(Reptest* test, Write_Params params);
+void Test_MovBytewiseLoop(u64 size, void* dest);
+
+void
+Test_MovBytewise(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_MovBytewiseLoop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
+void Test_MovUnrolledBytewiseLoop(u64 size, void* dest);
+
+void
+Test_MovUnrolledBytewise(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_MovUnrolledBytewiseLoop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
+void Test_NopBytewiseLoop(u64 size, void* dest);
+
+void
+Test_NopBytewise(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_NopBytewiseLoop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
+void Test_Nop3BytewiseLoop(u64 size, void* dest);
+
+void
+Test_Nop3Bytewise(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_Nop3BytewiseLoop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
+void Test_Nop9BytewiseLoop(u64 size, void* dest);
+
+void
+Test_Nop9Bytewise(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_Nop9BytewiseLoop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
+void Test_CmpBytewiseLoop(u64 size, void* dest);
+
+void
+Test_CmpBytewise(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_CmpBytewiseLoop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
+void Test_DecBytewiseLoop(u64 size, void* dest);
+
+void
+Test_DecBytewise(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_DecBytewiseLoop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
 
 struct
 {
@@ -36,7 +150,10 @@ struct
 } WriteTests[] = {
   "write bytewise", Test_WriteBytewise,
   "mov bytewise",   Test_MovBytewise,
+  "mov unrolled bytewise",   Test_MovUnrolledBytewise,
   "nop bytewise",   Test_NopBytewise,
+  "nop3 bytewise",  Test_Nop3Bytewise,
+  "nop9 bytewise",  Test_Nop9Bytewise,
   "cmp bytewise",   Test_CmpBytewise,
   "dec bytewise",   Test_DecBytewise,
 };
@@ -81,6 +198,7 @@ main(int argc, char** argv)
           Reptest_BeginRound(test);
           WriteTests[i].func(test, params);
           Reptest_EndRound(test);
+          printf("Max speed: %.4f cy/B\n", (f64)test->min_time/test->bytes_processed);
         }
       }
     }
