@@ -24,6 +24,57 @@ Test_WriteBytewise(Reptest* test, Write_Params params)
   }
 }
 
+void Test_MovSameQWordx1Loop(u64 size, void* dest);
+
+void
+Test_MovSameQWordx1(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_MovSameQWordx1Loop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
+void Test_MovSameQWordx2Loop(u64 size, void* dest);
+
+void
+Test_MovSameQWordx2(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_MovSameQWordx2Loop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
+void Test_MovSameQWordx3Loop(u64 size, void* dest);
+
+void
+Test_MovSameQWordx3(Reptest* test, Write_Params params)
+{
+  while (Reptest_RoundIsNotDone(test))
+  {
+    Reptest_BeginTestSection(test);
+
+    Test_MovSameQWordx3Loop(params.size, params.dest);
+
+    Reptest_EndTestSection(test);
+
+    Reptest_AddBytesProcessed(test, params.size);
+  }
+}
+
 void Test_MovBytewiseLoop(u64 size, void* dest);
 
 void
@@ -149,6 +200,9 @@ struct
   void (*func)(Reptest* state, Write_Params params);
 } WriteTests[] = {
   "write bytewise", Test_WriteBytewise,
+  "mov same qword x1", Test_MovSameQWordx1,
+  "mov same qword x2", Test_MovSameQWordx2,
+  "mov same qword x3", Test_MovSameQWordx3,
   "mov bytewise",   Test_MovBytewise,
   "mov unrolled bytewise",   Test_MovUnrolledBytewise,
   "nop bytewise",   Test_NopBytewise,

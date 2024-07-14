@@ -10,8 +10,41 @@ global Test_Nop3BytewiseLoop
 global Test_Nop9BytewiseLoop
 global Test_CmpBytewiseLoop
 global Test_DecBytewiseLoop
+global Test_MovSameQWordx1Loop
+global Test_MovSameQWordx2Loop
+global Test_MovSameQWordx3Loop
 
 section .text
+
+Test_MovSameQWordx1Loop:
+  align 64
+  .loop:
+    mov [rdx], rax
+    sub rcx, 1
+    cmp rcx, 0
+    jg .loop
+  ret
+
+Test_MovSameQWordx2Loop:
+  align 64
+  .loop:
+    mov [rdx], rax
+    mov [rdx], rax
+    sub rcx, 2
+    cmp rcx, 0
+    jg .loop
+  ret
+
+Test_MovSameQWordx3Loop:
+  align 64
+  .loop:
+    mov [rdx], rax
+    mov [rdx], rax
+    mov [rdx], rax
+    sub rcx, 3
+    cmp rcx, 0
+    jg .loop
+  ret
 
 Test_MovBytewiseLoop:
   xor rax, rax
