@@ -145,6 +145,8 @@ Read_Func TestFuncs[] = {
 int
 main(int argc, char** argv)
 {
+  InitializeOSLayer();
+
   if (argc != 2) fprintf(stderr, "Usage: reptest_read [file to read]\n");
   else
   {
@@ -177,8 +179,7 @@ main(int argc, char** argv)
     {
 
       Reptest tests[ARRAY_SIZE(TestFuncs)];
-      u64 rdtsc_freq = EstimateRDTSCFrequency(100);
-      printf("rdtsc_freq: %llu\n", rdtsc_freq);
+      printf("rdtsc_freq: %llu\n", OSLayer.rdtsc_freq);
 
       // NOTE: touch entire dest buffer
       Zero(test_params.dest, test_params.size);
@@ -187,7 +188,6 @@ main(int argc, char** argv)
       {
         tests[i] = (Reptest){
           .name                = TestFuncs[i].name,
-          .rdtsc_freq          = rdtsc_freq,
           .bytes_to_process    = test_params.size,
           .idle_time_threshold = 10,
         };

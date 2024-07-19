@@ -61,6 +61,9 @@ typedef u8 bool;
 #define MEGABYTE (1024*1024)
 #define GIGABYTE (1024*1024*1024)
 
+#define MAX(A, B) ((A) > (B) ? (A) : (B))
+#define MIN(A, B) ((A) < (B) ? (A) : (B))
+
 #define ARRAY_SIZE(A) (sizeof(A)/sizeof(0[A]))
 
 #define ASSERT(EX) ((EX) ? 1 : (AssertHandler(__FILE__, __LINE__, #EX), 0))
@@ -145,46 +148,105 @@ Memset(void* p, umm size, u8 val)
 static struct
 {
   HANDLE mem_info_handle;
-} GlobalMetrics;
+  u64 rdtsc_freq;
+  u64 trash_buffer_size;
+  void* trash_buffer;
+  u8 prime_temp;
+} OSLayer;
+
+static void
+InitializeOSLayer()
+{
+  OSLayer.mem_info_handle = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, GetCurrentProcessId());
+  if (OSLayer.mem_info_handle == NULL)
+  {
+    fprintf(stderr, "Failed to open process handle for memory info queries\n");
+    ExitProcess(1);
+  }
+
+  { /// Estimate RDTSC freq
+    u64 timing_interval_ms = 100;
+
+    LARGE_INTEGER perf_freq;
+    QueryPerformanceFrequency(&perf_freq);
+    s64 timing_interval_ticks = ((s64)timing_interval_ms * perf_freq.QuadPart)/1000;
+
+    LARGE_INTEGER start_tick;
+    QueryPerformanceCounter(&start_tick);
+
+    u64 start_cpu_tick = __rdtsc();
+
+    LARGE_INTEGER end_tick;
+    for (;;)
+    {
+      QueryPerformanceCounter(&end_tick);
+      if (end_tick.QuadPart - start_tick.QuadPart >= timing_interval_ticks) break;
+      else                                                                  continue;
+    }
+
+    u64 end_cpu_tick = __rdtsc();
+
+    u64 elapsed_cpu_ticks  = end_cpu_tick - start_cpu_tick;
+    u64 elapsed_wall_ticks = end_tick.QuadPart - start_tick.QuadPart;
+
+    OSLayer.rdtsc_freq = elapsed_cpu_ticks * (perf_freq.QuadPart / elapsed_wall_ticks);
+  }
+
+  SYSTEM_LOGICAL_PROCESSOR_INFORMATION logical_processor_infos[32];
+  u32 logical_processor_infos_byte_size = sizeof(logical_processor_infos);
+
+  if (!GetLogicalProcessorInformation(logical_processor_infos, &logical_processor_infos_byte_size))
+  {
+    fprintf(stderr, "Failed to query logical processor information\n");
+    ExitProcess(1);
+  }
+  else
+  {
+    OSLayer.trash_buffer_size = 0;
+    for (umm i = 0; i < logical_processor_infos_byte_size/sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION); ++i)
+    {
+      OSLayer.trash_buffer_size = MAX(OSLayer.trash_buffer_size, logical_processor_infos[i].Cache.Size);
+    }
+
+    OSLayer.trash_buffer = VirtualAlloc(0, OSLayer.trash_buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+    if (OSLayer.trash_buffer == 0)
+    {
+      fprintf(stderr, "Failed to allocate trash buffer\n");
+      ExitProcess(1);
+    }
+  }
+}
 
 static u64
 GetPageFaultCounter()
 {
-  static HANDLE handle = INVALID_HANDLE_VALUE;
-
-  if (handle == INVALID_HANDLE_VALUE) handle = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, GetCurrentProcessId());
-
   PROCESS_MEMORY_COUNTERS counters = { .cb = sizeof(PROCESS_MEMORY_COUNTERS) };
-  GetProcessMemoryInfo(handle, &counters, sizeof(PROCESS_MEMORY_COUNTERS));
+  GetProcessMemoryInfo(OSLayer.mem_info_handle, &counters, sizeof(PROCESS_MEMORY_COUNTERS));
   return counters.PageFaultCount;
 }
 
-static u64
-EstimateRDTSCFrequency(u32 timing_interval_ms)
+static void
+TrashCache()
 {
-  LARGE_INTEGER perf_freq;
-  QueryPerformanceFrequency(&perf_freq);
-  s64 timing_interval_ticks = ((s64)timing_interval_ms * perf_freq.QuadPart)/1000;
-
-  LARGE_INTEGER start_tick;
-  QueryPerformanceCounter(&start_tick);
-
-  u64 start_cpu_tick = __rdtsc();
-
-  LARGE_INTEGER end_tick;
-  for (;;)
+  for (umm i = 0; i < 2; ++i)
   {
-    QueryPerformanceCounter(&end_tick);
-    if (end_tick.QuadPart - start_tick.QuadPart >= timing_interval_ticks) break;
-    else                                                                  continue;
+    for (umm j = 0; j < OSLayer.trash_buffer_size; ++j)
+    {
+      ((u8*)OSLayer.trash_buffer)[j] |= 0xB5;
+    }
   }
+}
 
-  u64 end_cpu_tick = __rdtsc();
-
-  u64 elapsed_cpu_ticks  = end_cpu_tick - start_cpu_tick;
-  u64 elapsed_wall_ticks = end_tick.QuadPart - start_tick.QuadPart;
-
-  return elapsed_cpu_ticks * (perf_freq.QuadPart / elapsed_wall_ticks);
+static void
+PrimeCache(void* ptr, umm size)
+{
+  for (umm i = 0; i < 2; ++i)
+  {
+    for (umm j = 0; j < size; ++j)
+    {
+      OSLayer.prime_temp |= ((u8*)ptr)[j];
+    }
+  }
 }
 
 typedef struct Timed_Block_Info
@@ -291,11 +353,9 @@ Profiling_PrintResults()
 {
   u64 total_elapsed = ProfilingState.end - ProfilingState.start;
 
-  u64 rdtsc_freq = EstimateRDTSCFrequency(100);
+  f64 total_seconds_elapsed = (f64)total_elapsed/OSLayer.rdtsc_freq;
 
-  f64 total_seconds_elapsed = (f64)total_elapsed/rdtsc_freq;
-
-  printf("Total time: %.4fms (CPU freq %llu)\n", 1000.0 * total_seconds_elapsed, rdtsc_freq);
+  printf("Total time: %.4fms (CPU freq %llu)\n", 1000.0 * total_seconds_elapsed, OSLayer.rdtsc_freq);
 
   for (umm i = 0; i < ARRAY_SIZE(ProfilingState.blocks); ++i)
   {
@@ -313,7 +373,7 @@ Profiling_PrintResults()
       {
         f64 mbs_processed   = (f64)block->bytes_processed/(1024.0*1024.0);
         f64 gbs_processed   = mbs_processed/(1024.0);
-        f64 seconds_elapsed = (f64)block->acc_in/rdtsc_freq;
+        f64 seconds_elapsed = (f64)block->acc_in/OSLayer.rdtsc_freq;
 
         printf(" %.2f MB at %.4f GB/s", mbs_processed, gbs_processed/seconds_elapsed);
       }
@@ -349,9 +409,11 @@ typedef struct Reptest
   f64 idle_time;
 
   char* name;
-  u64 rdtsc_freq;
   u64 bytes_to_process;
   f64 idle_time_threshold;
+  bool should_trash_cache;
+
+  u64 user_flags;
 } Reptest;
 
 void
@@ -415,7 +477,7 @@ Reptest_RoundIsNotDone(Reptest* test)
         test->max_time_page_faults = test->page_faults;
       }
 
-      test->idle_time += (f64)test->elapsed/test->rdtsc_freq;
+      test->idle_time += (f64)test->elapsed/OSLayer.rdtsc_freq;
       if (test->elapsed < test->min_time)
       {
         test->min_time             = test->elapsed;
@@ -423,7 +485,7 @@ Reptest_RoundIsNotDone(Reptest* test)
 
         test->idle_time = 0;
 
-        printf("\rMin: %llu (%.6f ns) %.6f GB/s   ", test->min_time, 1.0e9 * (f64)test->min_time/test->rdtsc_freq, (f64)test->bytes_processed/GIGABYTE * (f64)test->rdtsc_freq/test->min_time);
+        printf("\rMin: %llu (%.6f ns) %.6f GB/s   ", test->min_time, 1.0e9 * (f64)test->min_time/OSLayer.rdtsc_freq, (f64)test->bytes_processed/GIGABYTE * (f64)OSLayer.rdtsc_freq/test->min_time);
       }
 
       if (test->idle_time >= test->idle_time_threshold) test->state = ReptestState_RoundFinished;
@@ -436,6 +498,8 @@ Reptest_RoundIsNotDone(Reptest* test)
       }
     }
   }
+
+  if (test->state == ReptestState_RoundInProgress && test->should_trash_cache) TrashCache();
 
   return (test->state == ReptestState_RoundInProgress);
 }
@@ -454,17 +518,17 @@ Reptest_EndRound(Reptest* test)
 
   if (test->state == ReptestState_RoundFinished)
   {
-    f64 min_time_ns         = 1.0e9 * (f64)test->min_time/test->rdtsc_freq;
-    f64 min_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)test->rdtsc_freq/test->min_time;
+    f64 min_time_ns         = 1.0e9 * (f64)test->min_time/OSLayer.rdtsc_freq;
+    f64 min_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)OSLayer.rdtsc_freq/test->min_time;
     f64 min_time_kbpfault   = (f64)test->bytes_processed/(KILOBYTE*test->min_time_page_faults);
 
-    f64 max_time_ns         = 1.0e9 * (f64)test->max_time/test->rdtsc_freq;
-    f64 max_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)test->rdtsc_freq/test->max_time;
+    f64 max_time_ns         = 1.0e9 * (f64)test->max_time/OSLayer.rdtsc_freq;
+    f64 max_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)OSLayer.rdtsc_freq/test->max_time;
     f64 max_time_kbpfault   = (f64)test->bytes_processed/(KILOBYTE*test->max_time_page_faults);
 
     f64 avg_time = (f64)test->acc_time/test->test_count;
-    f64 avg_time_ns         = 1.0e9 * (f64)avg_time/test->rdtsc_freq;
-    f64 avg_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)test->rdtsc_freq/avg_time;
+    f64 avg_time_ns         = 1.0e9 * (f64)avg_time/OSLayer.rdtsc_freq;
+    f64 avg_time_throughput = (f64)test->bytes_processed/GIGABYTE * (f64)OSLayer.rdtsc_freq/avg_time;
     f64 avg_time_kbpfault   = (f64)(test->test_count*test->bytes_processed)/(KILOBYTE*test->acc_page_faults);
 
     printf("\r");

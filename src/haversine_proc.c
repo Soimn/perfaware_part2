@@ -263,6 +263,8 @@ EatTokens_(Lexer* lexer, umm token_count, Token_Kind* tokens)
 int
 main(int argc, char** argv)
 {
+  InitializeOSLayer();
+
   Profiling_Begin();
 
   bool encountered_errors = false;

@@ -42,6 +42,13 @@ nasm -o reptest_write_asm.obj -f win64 ..\src\reptest_write.asm
 
 cl %compile_options% /O1 ..\src\reptest_write.c /link %link_options% /pdb:reptest_write.pdb /out:reptest_write.exe reptest_write_asm.obj
 
+del reptest_cache_asm.*
+del reptest_cache.*
+
+nasm -o reptest_cache_asm.obj -f win64 ..\src\reptest_cache.asm
+
+cl %compile_options% ..\src\reptest_cache.c /link %link_options% /pdb:reptest_cache.pdb /out:reptest_cache.exe reptest_cache_asm.obj
+
 goto end
 
 :invalid_arguments

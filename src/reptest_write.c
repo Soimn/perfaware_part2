@@ -215,6 +215,8 @@ struct
 int
 main(int argc, char** argv)
 {
+  InitializeOSLayer();
+
   if (argc != 2) fprintf(stderr, "Usage: reptest_write [number of pages to write]\n");
   else
   {
@@ -228,8 +230,7 @@ main(int argc, char** argv)
     {
       Write_Params params = { .dest = dest, .size = size };
 
-      u64 rdtsc_freq = EstimateRDTSCFrequency(100);
-      printf("rdtsc_freq: %llu\n", rdtsc_freq);
+      printf("rdtsc_freq: %llu\n", OSLayer.rdtsc_freq);
 
       Reptest tests[ARRAY_SIZE(WriteTests)];
 
@@ -237,7 +238,6 @@ main(int argc, char** argv)
       {
         tests[i] = (Reptest){
           .name                = WriteTests[i].name,
-          .rdtsc_freq          = rdtsc_freq,
           .bytes_to_process    = size,
           .idle_time_threshold = 10,
         };
