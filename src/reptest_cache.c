@@ -1,105 +1,51 @@
 #include "common.h"
 
-#define LINEAR_ACCESS_PATTERN 0
-
 int
 main(int argc, char** argv)
 {
   InitializeOSLayer();
 
-  // NOTE: Half cache size for each level, except "Main memory", which is 4x L3 size
-  // NOTE: Working set sizes must be a power of 2, with the largest being the last
-  Reptest tests[9] = {
-    {
-      .name                = "L1 cold",
-      .bytes_to_process    = 32*KILOBYTE,
-      .idle_time_threshold = 0.01,
-      .should_trash_cache  = true,
-      .user_flags          = LINEAR_ACCESS_PATTERN,
-    },
-    {
-      .name                = "L1 hot",
-      .bytes_to_process    = 32*KILOBYTE,
-      .idle_time_threshold = 0.01,
-      .user_flags          = LINEAR_ACCESS_PATTERN,
-    },
+  umm log_read_range = 30;
+  umm read_range = 1ULL << log_read_range;
 
-    {
-      .name                = "L2 cold",
-      .bytes_to_process    = 128*KILOBYTE,
-      .idle_time_threshold = 0.01,
-      .should_trash_cache  = true,
-      .user_flags          = LINEAR_ACCESS_PATTERN,
-    },
-    {
-      .name                = "L2 hot",
-      .bytes_to_process    = 128*KILOBYTE,
-      .idle_time_threshold = 0.01,
-      .user_flags          = LINEAR_ACCESS_PATTERN,
-    },
-
-    {
-      .name                = "L3 cold",
-      .bytes_to_process    = 6*MEGABYTE,
-      .idle_time_threshold = 0.1,
-      .should_trash_cache  = true,
-      .user_flags          = LINEAR_ACCESS_PATTERN,
-    },
-    {
-      .name                = "L3 hot",
-      .bytes_to_process    = 6*MEGABYTE,
-      .idle_time_threshold = 0.1,
-      .user_flags          = LINEAR_ACCESS_PATTERN,
-    },
-
-    {
-      .name                = "Main memory",
-      .bytes_to_process    = 48*MEGABYTE,
-      .idle_time_threshold = 0.1,
-      .user_flags          = LINEAR_ACCESS_PATTERN,
-    },
-  };
-
-  umm memory_size = 0;
-  for (umm i = 0; i < ARRAY_SIZE(tests); ++i) memory_size = MAX(memory_size, tests[i].bytes_to_process);
-
-  void* memory = VirtualAlloc(0, memory_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-
-  if (memory == 0) fprintf(stderr, "Failed to allocate memory for tests\n");
-  else
+  void* memory = VirtualAlloc(0, read_range, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+  if (memory == 0)
   {
-    Memset(memory, memory_size, 0xCD);
+    fprintf(stderr, "Failed to allocate memory\n");
+    return 1;
+  }
 
-    for (;;)
+  Memset(memory, read_range, 0xCD);
+
+  for (umm i = 14; i < log_read_range;)
+  {
+    umm amount = 1ULL << log_read_range;
+    umm mask   = (1ULL << i) - 1;
+
+    char name[sizeof("xx bits")] = "xx bits";
+    name[0] = (u8)(i/10) + '0';
+    name[1] = (u8)(i%10) + '0';
+
+    Reptest test = {
+      .name                = name,
+      .bytes_to_process    = amount,
+      .idle_time_threshold = 10,
+    };
+
+    Reptest_BeginRound(&test);
+
+    while (Reptest_RoundIsNotDone(&test))
     {
-      for (umm i = 0; i < ARRAY_SIZE(tests); ++i)
-      {
-        Reptest* test = &tests[i];
+      Reptest_BeginTestSection(&test);
 
-        Reptest_BeginRound(test);
+      void __vectorcall ReadAmountMaskedToRange(u64 amount, void* memory, u64 mask);
+      ReadAmountMaskedToRange(amount, memory, mask);
 
-        while (Reptest_RoundIsNotDone(test))
-        {
-          if (test->user_flags == LINEAR_ACCESS_PATTERN)
-          {
-            Reptest_BeginTestSection(test);
-
-            void __vectorcall Test_ReadFullSpeed(u64 size, void* memory);
-            Test_ReadFullSpeed(test->bytes_to_process, memory);
-
-            Reptest_EndTestSection(test);
-          }
-          else
-          {
-          }
-
-          Reptest_AddBytesProcessed(test, test->bytes_to_process);
-        }
-
-        Reptest_EndRound(test);
-        printf("%.4f cy/line\n", (f64)test->min_time/(test->bytes_to_process/64));
-      }
+      Reptest_EndTestSection(&test);
+      Reptest_AddBytesProcessed(&test, amount);
     }
+
+    Reptest_EndRound(&test);
   }
 
   return 0;

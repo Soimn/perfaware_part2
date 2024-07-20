@@ -149,9 +149,6 @@ static struct
 {
   HANDLE mem_info_handle;
   u64 rdtsc_freq;
-  u64 trash_buffer_size;
-  void* trash_buffer;
-  u8 prime_temp;
 } OSLayer;
 
 static void
@@ -191,29 +188,14 @@ InitializeOSLayer()
 
     OSLayer.rdtsc_freq = elapsed_cpu_ticks * (perf_freq.QuadPart / elapsed_wall_ticks);
   }
+}
 
-  SYSTEM_LOGICAL_PROCESSOR_INFORMATION logical_processor_infos[32];
-  u32 logical_processor_infos_byte_size = sizeof(logical_processor_infos);
-
-  if (!GetLogicalProcessorInformation(logical_processor_infos, &logical_processor_infos_byte_size))
+static void
+FlushMemoryFromCache(void* ptr, umm size)
+{
+  for (umm i = 0; i < size; i += 64)
   {
-    fprintf(stderr, "Failed to query logical processor information\n");
-    ExitProcess(1);
-  }
-  else
-  {
-    OSLayer.trash_buffer_size = 0;
-    for (umm i = 0; i < logical_processor_infos_byte_size/sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION); ++i)
-    {
-      OSLayer.trash_buffer_size = MAX(OSLayer.trash_buffer_size, logical_processor_infos[i].Cache.Size);
-    }
-
-    OSLayer.trash_buffer = VirtualAlloc(0, OSLayer.trash_buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-    if (OSLayer.trash_buffer == 0)
-    {
-      fprintf(stderr, "Failed to allocate trash buffer\n");
-      ExitProcess(1);
-    }
+    _mm_clflushopt((u8*)ptr + i);
   }
 }
 
@@ -223,30 +205,6 @@ GetPageFaultCounter()
   PROCESS_MEMORY_COUNTERS counters = { .cb = sizeof(PROCESS_MEMORY_COUNTERS) };
   GetProcessMemoryInfo(OSLayer.mem_info_handle, &counters, sizeof(PROCESS_MEMORY_COUNTERS));
   return counters.PageFaultCount;
-}
-
-static void
-TrashCache()
-{
-  for (umm i = 0; i < 2; ++i)
-  {
-    for (umm j = 0; j < OSLayer.trash_buffer_size; ++j)
-    {
-      ((u8*)OSLayer.trash_buffer)[j] |= 0xB5;
-    }
-  }
-}
-
-static void
-PrimeCache(void* ptr, umm size)
-{
-  for (umm i = 0; i < 2; ++i)
-  {
-    for (umm j = 0; j < size; ++j)
-    {
-      OSLayer.prime_temp |= ((u8*)ptr)[j];
-    }
-  }
 }
 
 typedef struct Timed_Block_Info
@@ -498,8 +456,6 @@ Reptest_RoundIsNotDone(Reptest* test)
       }
     }
   }
-
-  if (test->state == ReptestState_RoundInProgress && test->should_trash_cache) TrashCache();
 
   return (test->state == ReptestState_RoundInProgress);
 }
