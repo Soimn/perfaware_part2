@@ -49,6 +49,20 @@ nasm -o reptest_cache_asm.obj -f win64 ..\src\reptest_cache.asm
 
 cl %compile_options% ..\src\reptest_cache.c /link %link_options% /pdb:reptest_cache.pdb /out:reptest_cache.exe reptest_cache_asm.obj
 
+del reptest_cache_unaligned_asm.*
+del reptest_cache_unaligned.*
+
+nasm -o reptest_cache_unaligned_asm.obj -f win64 ..\src\reptest_cache_unaligned.asm
+
+cl %compile_options% ..\src\reptest_cache_unaligned.c /link %link_options% /pdb:reptest_cache_unaligned.pdb /out:reptest_cache_unaligned.exe reptest_cache_unaligned_asm.obj
+
+del reptest_cache_ass_asm.*
+del reptest_cache_ass.*
+
+nasm -o reptest_cache_ass_asm.obj -f win64 ..\src\reptest_cache_ass.asm
+
+cl %compile_options% ..\src\reptest_cache_ass.c /link %link_options% /pdb:reptest_cache_ass.pdb /out:reptest_cache_ass.exe reptest_cache_ass_asm.obj
+
 goto end
 
 :invalid_arguments
