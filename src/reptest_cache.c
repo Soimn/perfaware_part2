@@ -5,47 +5,60 @@ main(int argc, char** argv)
 {
   InitializeOSLayer();
 
-  umm log_read_range = 30;
-  umm read_range = 1ULL << log_read_range;
+  umm buffer_size = 1*GIGABYTE;
+  void* buffer = VirtualAlloc(0, buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
-  void* memory = VirtualAlloc(0, read_range, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-  if (memory == 0)
+  if (buffer == 0) fprintf(stderr, "Failed to allocate memory\n");
+  else
   {
-    fprintf(stderr, "Failed to allocate memory\n");
-    return 1;
-  }
+    Memset(buffer, buffer_size, 0xCD);
 
-  Memset(memory, read_range, 0xCD);
+    umm start     = 28*KILOBYTE;
+    umm increment =  4*KILOBYTE;
 
-  for (umm i = 14; i < log_read_range;)
-  {
-    umm amount = 1ULL << log_read_range;
-    umm mask   = (1ULL << i) - 1;
+    f64 results[58] = {0};
+    umm result_count  = 0;
 
-    char name[sizeof("xx bits")] = "xx bits";
-    name[0] = (u8)(i/10) + '0';
-    name[1] = (u8)(i%10) + '0';
-
-    Reptest test = {
-      .name                = name,
-      .bytes_to_process    = amount,
-      .idle_time_threshold = 10,
-    };
-
-    Reptest_BeginRound(&test);
-
-    while (Reptest_RoundIsNotDone(&test))
+    for (umm read_size = start; read_size < buffer_size && result_count < ARRAY_SIZE(results); read_size += increment)
     {
-      Reptest_BeginTestSection(&test);
+      umm size_div_512     = read_size/512;
+      umm loop_count       = buffer_size/(size_div_512*512);
+      umm bytes_to_process = loop_count*size_div_512*512;
 
-      void __vectorcall ReadAmountMaskedToRange(u64 amount, void* memory, u64 mask);
-      ReadAmountMaskedToRange(amount, memory, mask);
+      char name[sizeof("xxx K")] = "xxx K";
+      name[0] = ((read_size >> 10)/100    )%10 + '0';
+      name[1] = ((read_size >> 10)/10     )%10 + '0';
+      name[2] = ((read_size >> 10)/1      )%10 + '0';
 
-      Reptest_EndTestSection(&test);
-      Reptest_AddBytesProcessed(&test, amount);
+      Reptest test = {
+        .name                = name,
+        .bytes_to_process    = bytes_to_process,
+        .idle_time_threshold = 1,
+      };
+
+      Reptest_BeginRound(&test);
+
+      while (Reptest_RoundIsNotDone(&test))
+      {
+        Reptest_BeginTestSection(&test);
+
+        void __vectorcall ReadRangeNTimesSingle(u64 bytes_to_process, void* data, u64 reset_point);
+        ReadRangeNTimesSingle(bytes_to_process, buffer, read_size);
+
+        Reptest_EndTestSection(&test);
+        Reptest_AddBytesProcessed(&test, bytes_to_process);
+      }
+
+      Reptest_EndRound(&test);
+
+      results[result_count++] = test.bytes_processed * ((f64)test.min_time/OSLayer.rdtsc_freq);
     }
 
-    Reptest_EndRound(&test);
+    printf("\n\nsize,GB/s\n");
+    for (umm i = 0; i < ARRAY_SIZE(results); ++i)
+    {
+      printf("%llu, %.6f\n", start + i*increment, results[i]);
+    }
   }
 
   return 0;
