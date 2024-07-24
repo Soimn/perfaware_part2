@@ -5,7 +5,7 @@ main(int argc, char** argv)
 {
   InitializeOSLayer();
 
-  umm buffer_size = 1*GIGABYTE + 512*MEGABYTE;
+  umm buffer_size = 1*GIGABYTE;
   void* buffer = VirtualAlloc(0, buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
   if (buffer == 0) fprintf(stderr, "Failed to allocate memory\n");
