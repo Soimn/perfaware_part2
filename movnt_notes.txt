@@ -1,0 +1,55 @@
+movnt vs mov
+movnt can be beneficial when stores would pollute the cache with data that wont
+be read for a very long time
+
+for there to be a significant difference between using movnt and mov the
+program has to be frequently writing to memory that only pollutes the cache,
+while at the same time reading or writing to lines that will be evicted by the
+pollution
+
+only example of such a workload that comes to mind is some sort of image
+upscaling routine that writes several "rows" at a time (preferably equal to
+the associativity of L1)
+
+matmul and storing the results as history?
+- since the matrices being multiplied are fixed at one address they will only be evicted sometimes (once per 64K)
+-> store matrices "vertically" and align all matrices to the same cache index.
+   This will probably work, but is highly unrealistic, as it essentially stores
+   one matrix per 64K
+
+I am probably overthinking this
+
+properties needed for movnt to be useful
+- writing a lot of data that will not be read or written to again, "ever"
+- a workload that needs most, if not all, of its working set in L1/L2 cache 
+  to be remotely performant
+
+idea of structure:
+ 1. compute values based on tables
+ 2. write out results in a way that evicts the tables
+ 3. repeat
+
+simple idea:
+sum N images and write M out. All images are the same dimensions and aligned to 64K. Do the sum and copy in chunks (blur?).
+
+combine 8 images into 1 in 8 ways. input and output are consecutive 64K images
+
+64K monochrome
+(2^16)^(1/2) = 2^8
+256x256 monochrome
+
+maybe 32K instead, since D$ is only half of L1
+so 256x128 images
+
+or maybe scale it up to make the differences more apparent
+1024x1024 seems like a realistic size for some sensor readout of sorts,
+which is 2^20 B monochrome
+
+The intel prefetchers seem to be very aggressive (at least the i7 8700 which has a stream prefetcher for L2 which apparently can prefetch a couple dozen lines ahead without a big startup cost), so larger working sets will probably not incurr a load of capacity misses
+
+goal: read in the input images, and evict them, once per output image
+problem: one write is not enough to cause havoc
+solution: or is it
+
+plan:
+combine input images in different ways and write once to each output image. Advancing to the next pixel should then read the same cache line and cause a miss per input image, which should be bad enough. Only problem is justifying reading the input in again instead of just keeping the whole line in registers and avoiding the miss.

@@ -63,6 +63,13 @@ nasm -o reptest_cache_ass_asm.obj -f win64 ..\src\reptest_cache_ass.asm
 
 cl %compile_options% ..\src\reptest_cache_ass.c /link %link_options% /pdb:reptest_cache_ass.pdb /out:reptest_cache_ass.exe reptest_cache_ass_asm.obj
 
+del reptest_movnt_asm.*
+del reptest_movnt.*
+
+nasm -o reptest_movnt_asm.obj -f win64 ..\src\reptest_movnt.asm
+
+cl %compile_options% ..\src\reptest_movnt.c /link %link_options% /pdb:reptest_movnt.pdb /out:reptest_movnt.exe reptest_movnt_asm.obj
+
 goto end
 
 :invalid_arguments
