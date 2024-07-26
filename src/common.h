@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <intrin.h>
 
 typedef unsigned __int8  u8;
 typedef unsigned __int16 u16;

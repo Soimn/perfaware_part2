@@ -12,7 +12,7 @@ if "%Platform%" neq "x64" (
 	goto end
 )
 
-set "common_compile_options= /nologo /W3 /wd4116"
+set "common_compile_options= /nologo /W3 /wd4116 /arch:AVX2"
 set "common_link_options= /incremental:no /opt:ref /subsystem:console"
 set "debug_compile_options=%common_compile_options% /Od /Zo /Z7 /RTC1 /MTd"
 set "release_compile_options=%common_compile_options% /O2 /Zo /Z7"
