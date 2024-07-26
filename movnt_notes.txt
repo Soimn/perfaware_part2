@@ -53,3 +53,26 @@ solution: or is it
 
 plan:
 combine input images in different ways and write once to each output image. Advancing to the next pixel should then read the same cache line and cause a miss per input image, which should be bad enough. Only problem is justifying reading the input in again instead of just keeping the whole line in registers and avoiding the miss.
+
+actual implementation:
+two arrays of images, one for input and one for output
+the number of input and output images can be controlled independently
+operation:
+ - loop over every y
+  - loop over every x (every 16, since 16 xs are processed at once)
+    - compute xor of all input images at x,y
+    - loop over all output images
+      - set output image at x,y to be the xor of all images except one
+      ^ this is what is either a vmovdqu or vmovntdq
+
+setting the image size to be 256x256, input image count to 8 and output count to 10 gave a 14% improvement from 3.5 GB/s to 4.0 GB/s. Setting  input and output count to any other values resulted in a significant performance loss
+
+-- wacthed the beginning of the next lecture to see Casey's version
+aa a shippaishita
+Casey's version is significantly simpler and achieves a ~130% perf increase
+
+but how?
+Casey's version just tiles a small buffer onto a larger one
+Why would movnt provide a speedup?
+Because I would assume the small buffer lines would always be more recently used than all other larger buffer lines (except the one being written after)?
+
