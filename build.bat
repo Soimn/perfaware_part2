@@ -70,6 +70,8 @@ nasm -o reptest_movnt_asm.obj -f win64 ..\src\reptest_movnt.asm
 
 cl %compile_options% ..\src\reptest_movnt.c /link %link_options% /pdb:reptest_movnt.pdb /out:reptest_movnt.exe reptest_movnt_asm.obj
 
+cl %compile_options% ..\src\reptest_prefetch.c /link %link_options% /pdb:reptest_prefetch.pdb /out:reptest_prefetch.exe
+
 goto end
 
 :invalid_arguments
