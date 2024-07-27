@@ -76,3 +76,85 @@ Casey's version just tiles a small buffer onto a larger one
 Why would movnt provide a speedup?
 Because I would assume the small buffer lines would always be more recently used than all other larger buffer lines (except the one being written after)?
 
+An illustration of what I would expect to happen (given a 4 way LRU cache with
+8 slots) when the small buffer lines "s" are read first every iteration and
+then some lines are written ("A", "B", "C", ...)
+
+--- init
+0 ....
+1 ....
+2 ....
+3 ....
+4 ....
+5 ....
+6 ....
+7 ....
+--- 1st iteration
+0 sA..
+1 sA..
+2 A...
+3 A...
+4 A...
+5 A...
+6 A...
+7 A...
+--- 2nd iteration
+0 sAB.
+1 sAB.
+2 AB..
+3 AB..
+4 AB..
+5 AB..
+6 AB..
+7 AB..
+--- 3rd iteration
+0 sABC
+1 sABC
+2 ABC.
+3 ABC.
+4 ABC.
+5 ABC.
+6 ABC.
+7 ABC.
+--- 4th iteration (s,C are used in 3rd it, A last used in 1st)
+0 sDBC
+1 sDBC
+2 ABCD
+3 ABCD
+4 ABCD
+5 ABCD
+6 ABCD
+7 ABCD
+--- 5th iteration (s,D are used in 4th it, B last used in 2st)
+0 sDEC
+1 sDEC
+2 EBCD
+3 EBCD
+4 EBCD
+5 EBCD
+6 EBCD
+7 EBCD
+
+=> s is never evicted
+so why does movnt result in a speedup?
+As I understand it, movnt writes only to a write combining buffer (probably the
+same buffer used for write back but marking the lines with a flag or something)
+The point of it is to avoid populating the cache
+This alleviates pressure on the cache, in exchange for suffering main memory speeds for a subsequent load of the non temporally stored memory
+This can be helpful in scenarios where stores to memory that will not be read, for a long long time, pollutes the cache
+Since most caches use a Least Recently Used eviction policy, useful lines will only be evicted when either all ways are filled with useful lines, or a useful line is older than a useless line. A program reading from a small buffer and writing it tiled over a larger buffer will keep reading the small buffer. When all the other lines in the same slot are pollution from writing to the larger buffer, the small buffer lines should always be accessed more recently, and therefore never evicted.
+
+So WTF is going on!?
+It would make sense if consecutive cache lines went into the same slot
+RA RA ..
+WA RA WA
+RB RB WA
+WB RB WB
+
+RA RA ..
+WA RA ..
+RB RA RB
+WB RA RB
+
+be me, pingle
+https://open.substack.com/pub/computerenhance/p/q-and-a-60-2024-07-22?r=1qsdcv&utm_campaign=comment-list-share-cta&utm_medium=web&comments=true&commentId=63486206
