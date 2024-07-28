@@ -278,6 +278,7 @@ main(int argc, char** argv)
   u64 expected_answers_size = 0;
 
   u32 startup_block;
+  u64 startup_block_page_faults_init = GetPageFaultCounter();
   TIME_ANNOTATED_BLOCK("Startup", &startup_block)
   {
     if (argc < 2 || argc > 3)
@@ -287,12 +288,12 @@ main(int argc, char** argv)
     }
     else
     {
-      if (!Initial_ReadEntireFile(argv[1], &input, &input_size))
+      if (!FA_ReadEntireFile(argv[1], &input, &input_size))
       {
         fprintf(stderr, "Failed to read input file\n");
         encountered_errors = true;
       }
-      else if (argc > 2 && !Initial_ReadEntireFile(argv[2], &expected_answers, &expected_answers_size))
+      else if (argc > 2 && !FA_ReadEntireFile(argv[2], &expected_answers, &expected_answers_size))
       {
         fprintf(stderr, "Failed to read answer file\n");
         encountered_errors = true;
@@ -301,6 +302,7 @@ main(int argc, char** argv)
   }
 
   ANNOTATE_BYTES_PROCESSED(startup_block, input_size + expected_answers_size);
+  ANNOTATE_PAGE_FAULTS(startup_block, GetPageFaultCounter() - startup_block_page_faults_init);
 
   if (!encountered_errors)
   {

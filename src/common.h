@@ -101,7 +101,7 @@ Char_IsHexAlphaDigit(u8 c)
 }
 
 static bool
-ReadEntireFile(char* filename, void** contents, u64* size)
+Initial_ReadEntireFile(char* filename, void** contents, u64* size)
 {
   bool succeeded = false;
   
@@ -125,6 +125,60 @@ ReadEntireFile(char* filename, void** contents, u64* size)
     }
 
     fclose(file);
+  }
+
+  return succeeded;
+}
+
+static bool
+FA_ReadEntireFile(char* filename, void** contents, u64* size)
+{
+  bool succeeded = false;
+
+  HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OVERLAPPED, 0);
+
+  if (file != INVALID_HANDLE_VALUE)
+  {
+    LARGE_INTEGER file_size;
+    if (GetFileSizeEx(file, &file_size) && file_size.QuadPart <= U32_MAX)
+    {
+      // NOTE: Extra byte for null termination
+      umm alloc_size         = file_size.QuadPart + 1;
+      umm rounded_alloc_size = (alloc_size + 4095) & ~4095;
+
+      void* memory = VirtualAlloc(0, rounded_alloc_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
+      if (memory != 0)
+      {
+        OVERLAPPED overlapped = {0};
+        BOOL read_file_result = ReadFile(file, memory, (u32)file_size.QuadPart, 0, &overlapped);
+
+        if (read_file_result || GetLastError() == ERROR_IO_PENDING)
+        {
+          // NOTE: This turned out to be slower
+          /*volatile __m128i a;
+          for (umm i = 8*KILOBYTE; i < (rounded_alloc_size>>13)<<13; i += 8*KILOBYTE)
+          {
+            a = _mm_load_si128((__m128i*)((u8*)memory + i));
+            a = _mm_load_si128((__m128i*)((u8*)memory + i + 4*KILOBYTE));
+          }*/
+
+          u32 bytes_read = 0;
+          if (GetOverlappedResult(file, &overlapped, &bytes_read, TRUE) && bytes_read == file_size.QuadPart)
+          {
+            // NOTE: Null termination using extra allocated byte
+            ((u8*)memory)[file_size.QuadPart] = 0;
+
+            *contents = memory;
+            *size     = file_size.QuadPart;
+
+            succeeded = true;
+          }
+        }
+      }
+    }
+
+    CloseHandle(file);
   }
 
   return succeeded;
@@ -215,6 +269,7 @@ typedef struct Timed_Block_Info
   u64 hits;
   char* name;
   u64 bytes_processed;
+  u64 page_faults;
 } Timed_Block_Info;
 
 static struct
@@ -283,6 +338,7 @@ TimedBlock__End(Timed_Block_State state)
 #define TIME_ANNOTATED_BLOCK(NAME, ID_OUT) TIMED_BLOCK((NAME), 0, (ID_OUT))
 #define TIME_ANNOTATED_THROUGHPUT(NAME, BYTES_PROCESSED, ID_OUT) TIMED_BLOCK((NAME), (BYTES_PROCESSED), (ID_OUT))
 #define ANNOTATE_BYTES_PROCESSED(ID, BYTES) ProfilingState.blocks[ID].bytes_processed = (BYTES)
+#define ANNOTATE_PAGE_FAULTS(ID, FAULTS) ProfilingState.blocks[ID].page_faults = (FAULTS)
 
 #else
 #define TIMED_BLOCK(...)
@@ -291,6 +347,7 @@ TimedBlock__End(Timed_Block_State state)
 #define TIME_ANNOTATED_BLOCK(...)
 #define TIME_ANNOTATED_THROUGHPUT(...)
 #define ANNOTATE_BYTES_PROCESSED(...)
+#define ANNOTATE_PAGE_FAULTS(...)
 #endif
 
 static void
@@ -335,6 +392,11 @@ Profiling_PrintResults()
         f64 seconds_elapsed = (f64)block->acc_in/OSLayer.rdtsc_freq;
 
         printf(" %.2f MB at %.4f GB/s", mbs_processed, gbs_processed/seconds_elapsed);
+      }
+
+      if (block->page_faults != 0)
+      {
+        printf(" PF: %llu (%g KB/fault)", block->page_faults, ((f64)block->bytes_processed/KILOBYTE)/block->page_faults);
       }
 
       printf("\n");
